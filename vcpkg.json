@@ -1,0 +1,12 @@
+{
+  "dependencies": [
+    "glfw3",
+    "glm",
+    "vk-bootstrap",
+    "volk",
+    "vulkan-memory-allocator",
+    "spdlog",
+    "stb",
+    "tinygltf"
+  ]
+}
