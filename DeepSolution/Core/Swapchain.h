@@ -6,34 +6,24 @@
 #include <vector>
 #include <array>
 
-#include "Queue.h"
-#include "CommandPool.h"
-
 class Device;
 
 /**
- * @brief Swapchain abstraction, used together with dynamic rendering extension.
+ * @brief Swapchain abstraction.
 */
 class Swapchain
 {
 public:
 	/**
-	 * @brief Uninitialised state
-	*/
-	Swapchain() = default;
-	
-	/**
 	 * @brief Setup swapchain and its dependencies.
 	*/
-	void Connect(Device& device, VkSurfaceKHR surface, Queue graphicsQueue);
+	Swapchain(Device& device, VkFormat depthFormat = VK_FORMAT_UNDEFINED);
 
-	void SetDepthFormat(VkFormat format);
-	
 	/**
 	 * @brief Acquire an image and updates the internal image index.
 	 * @return A command buffer that has begin recording.
 	*/
-	VkCommandBuffer Acquire(VkClearValue color, VkClearValue depthStencil);
+	VkCommandBuffer Acquire();
 
 	/**
 	 * @brief Submits the frame command buffer and presents the corresponding image index
@@ -42,21 +32,24 @@ public:
 
 	VkImage GetCurrentImage() const;
 	VkImageView GetCurrentImageView() const;
+	VkImageView GetDepthImageView() const;
+	VkExtent2D GetExtent() const;
+	VkFormat GetFormat() const;
 
-	void Release();
+	~Swapchain();
 private:
 	VkSwapchainKHR swapchain_{};
 	std::vector<VkImage> images_;
 	std::vector<VkImageView> imageViews_;
+	VkFormat imageFormat;
+	VkColorSpaceKHR colorSpace;
+	VkPresentModeKHR presentMode;
 
 	// If requesting for depth image, set this to desired depth format
 	VkFormat depthFormat = VK_FORMAT_UNDEFINED;
 	VkImage depthImage_{};
 	VkImageView depthImageView_{};
 	VmaAllocation depthAllocation_{};
-
-	// For non swapchain layout transitions.
-	CommandPool pool{};
 
 	uint32_t imageIndex_ = 0;
 
@@ -65,19 +58,18 @@ private:
 	VkFormat surfaceFormat_{};
 	VkExtent2D surfaceExtent_{};
 
-	const static int MAX_FRAMES_IN_FLIGHT = 2;
 	struct FrameResource {
 		VkCommandBuffer commandBuffer;
 		VkSemaphore acquire;
 		VkSemaphore present;
 		VkFence fence;
 	};
+	uint32_t framesInFlight_; // Ask from device.
 	std::vector<FrameResource> frameResources_;
 	uint32_t currentFrame_ = 0;
 	VkCommandPool commandPool_{};
 	VkQueue graphics_{};
 
 	// Stored for easier recreation of swapchain.
-	Device* device_{};
-	VkSurfaceKHR surface_{};
+	Device& device_;
 };

@@ -5,7 +5,10 @@
 #include <GLFW/glfw3.h>
 
 #include "Core/Swapchain.h"
-#include "Core/Device.h"
+#include "Core/Device.h" 
+#include "ImGuiAdapter.h"
+
+#include <memory>
 
 class Application
 {
@@ -19,16 +22,10 @@ public:
 private:
 	GLFWwindow* window_;
 	
-	VkInstance instance_;
-	VkDebugUtilsMessengerEXT messenger_;
-	VkSurfaceKHR surface_;
-	
 	Device device_;
 
-	Queue graphics_;
-	Queue transfer_;
-
-	Swapchain swapchain_;
+	std::unique_ptr<Swapchain> swapchain_;
+	std::unique_ptr<ImGuiAdapter> imgui_;
 
 	void Draw();
 };

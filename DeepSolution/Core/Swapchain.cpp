@@ -1,68 +1,63 @@
-#include "Swapchain.h"
-#include "Common.h"
 #include <VkBootstrap.h>
 #include <volk.h>
 #include <spdlog/spdlog.h>
+
+#include "Swapchain.h"
+#include "Common.h"
 #include "Transition.h"
 #include "Device.h"
 
-void Swapchain::Connect(Device& device, VkSurfaceKHR surface, Queue queue)
+Swapchain::Swapchain(Device& device, VkFormat depthFormat): device_(device), depthFormat(depthFormat)
 {
-	check(!commandPool_);
-	
-	device_ = &device;
-	surface_ = surface;
-	graphics_ = queue.queue;
+	graphics_ = device_.graphicsQueue.queue;
+	framesInFlight_ = device_.getMaxFramesInFlight();
 
 	VkCommandPoolCreateInfo poolCI{};
 	poolCI.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolCI.queueFamilyIndex = queue.family;
+	poolCI.queueFamilyIndex = device_.graphicsQueue.family;
 	poolCI.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	check(vkCreateCommandPool(device_->device, &poolCI, nullptr, &commandPool_));
+	check(vkCreateCommandPool(device_.device, &poolCI, nullptr, &commandPool_));
 
-	pool = CommandPool(device_->device, queue);
-
-	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	for (size_t i = 0; i < framesInFlight_; i++)
 	{
 		FrameResource resource{};
-		resource.acquire = CreateInfo::createBinarySemaphore(device_->device);
-		resource.present = CreateInfo::createBinarySemaphore(device_->device);
-		resource.fence = CreateInfo::createFence(device_->device, VK_FENCE_CREATE_SIGNALED_BIT);
-		resource.commandBuffer = CreateInfo::allocateCommandBuffer(device_->device, commandPool_);
+		resource.acquire = CreateInfo::createBinarySemaphore(device_.device);
+		resource.present = CreateInfo::createBinarySemaphore(device_.device);
+		resource.fence = CreateInfo::createFence(device_.device, VK_FENCE_CREATE_SIGNALED_BIT);
+		resource.commandBuffer = CreateInfo::allocateCommandBuffer(device_.device, commandPool_);
 		frameResources_.emplace_back(resource);
 	}
 
 	Refresh();
 }
 
-void Swapchain::SetDepthFormat(VkFormat format)
-{
-	depthFormat = format;
-}
-
 void Swapchain::Refresh()
 {
 	if (swapchain_)
 	{
-		vkDeviceWaitIdle(device_->device);
+		vkDeviceWaitIdle(device_.device);
 	}
 
-	vkb::SwapchainBuilder swapchainBuilder(device_->physicalDevice, device_->device, surface_);
+	vkb::SwapchainBuilder swapchainBuilder(device_.physicalDevice, device_.device, device_.surface);
 	auto swapchainResult = swapchainBuilder
 		.set_desired_format({ .format = VK_FORMAT_R8G8B8A8_SRGB, .colorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR })
 		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)
+		.add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
 		.set_old_swapchain(swapchain_)
 		.build();
 	
 	check(swapchainResult);
 
-	vkDestroySwapchainKHR(device_->device, swapchain_, nullptr);
+	vkDestroySwapchainKHR(device_.device, swapchain_, nullptr);
 
 	vkb::Swapchain& swapchain = swapchainResult.value();
+	imageFormat = swapchain.image_format;
+	colorSpace = swapchain.color_space;
+	presentMode = swapchain.present_mode;
 
 	for (const auto& imageView : imageViews_)
 	{
-		vkDestroyImageView(device_->device, imageView, nullptr);
+		vkDestroyImageView(device_.device, imageView, nullptr);
 	}
 
 	swapchain_ = swapchain.swapchain;
@@ -77,8 +72,8 @@ void Swapchain::Refresh()
 	{
 		if (depthImage_)
 		{
-			vkDestroyImageView(device_->device, depthImageView_, nullptr);
-			vmaDestroyImage(device_->allocator, depthImage_, depthAllocation_);
+			vkDestroyImageView(device_.device, depthImageView_, nullptr);
+			vmaDestroyImage(device_.allocator, depthImage_, depthAllocation_);
 		}
 
 		VkImageCreateInfo imageCI{};
@@ -96,7 +91,7 @@ void Swapchain::Refresh()
 		VmaAllocationCreateInfo allocationCI{};
 		allocationCI.usage = VMA_MEMORY_USAGE_AUTO;
 		
-		check(vmaCreateImage(device_->allocator, &imageCI, &allocationCI, &depthImage_, &depthAllocation_, nullptr));
+		check(vmaCreateImage(device_.allocator, &imageCI, &allocationCI, &depthImage_, &depthAllocation_, nullptr));
 
 		VkImageViewCreateInfo imageViewCI{};
 		imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -104,20 +99,20 @@ void Swapchain::Refresh()
 		imageViewCI.image = depthImage_;
 		imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		imageViewCI.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
-		check(vkCreateImageView(device_->device, &imageViewCI, nullptr, &depthImageView_));
+		check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &depthImageView_));
 
-		pool.perform([&](VkCommandBuffer buffer) {
-			Transition::UndefinedToDepthStencilAttachment(depthImage_, buffer);
+		CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
+			Transition::UndefinedToDepthStencilAttachment(depthImage_, commandBuffer);
 		});
 	}
 }
 
-VkCommandBuffer Swapchain::Acquire(VkClearValue color, VkClearValue depthStencil)
+VkCommandBuffer Swapchain::Acquire()
 {
 	const auto& resource = frameResources_[currentFrame_];
-	vkWaitForFences(device_->device, 1, &resource.fence, VK_TRUE, UINT64_MAX);
+	vkWaitForFences(device_.device, 1, &resource.fence, VK_TRUE, UINT64_MAX);
 	
-	VkResult result = vkAcquireNextImageKHR(device_->device, swapchain_, UINT64_MAX, resource.acquire, nullptr, &imageIndex_);
+	VkResult result = vkAcquireNextImageKHR(device_.device, swapchain_, UINT64_MAX, resource.acquire, nullptr, &imageIndex_);
 	while (true)
 	{
 		if (result != VK_ERROR_OUT_OF_DATE_KHR)
@@ -128,7 +123,7 @@ VkCommandBuffer Swapchain::Acquire(VkClearValue color, VkClearValue depthStencil
 		Refresh();
 		SPDLOG_INFO("Recreated swapchain at acquire!");
 	} 
-	vkResetFences(device_->device, 1, &resource.fence);
+	vkResetFences(device_.device, 1, &resource.fence);
 
 	check(vkResetCommandBuffer(resource.commandBuffer, 0));
 
@@ -137,49 +132,12 @@ VkCommandBuffer Swapchain::Acquire(VkClearValue color, VkClearValue depthStencil
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	check(vkBeginCommandBuffer(resource.commandBuffer, &beginInfo));
 
-	Transition::UndefinedToColorAttachment(GetCurrentImage(), resource.commandBuffer);
-
-	// Begin Rendering
-	VkRenderingAttachmentInfo colorAttachment{};
-	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAttachment.imageView = GetCurrentImageView();
-	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachment.clearValue = color;
-
-	VkRenderingAttachmentInfo depthAttachment{};
-	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	depthAttachment.imageView = depthImageView_;
-	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	depthAttachment.clearValue = depthStencil;
-
-	VkRenderingInfo renderInfo{};
-	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	renderInfo.renderArea.offset = { 0, 0 };
-	renderInfo.renderArea.extent = surfaceExtent_;
-	renderInfo.layerCount = 1;
-	renderInfo.colorAttachmentCount = 1;
-	renderInfo.pColorAttachments = &colorAttachment;
-
-	if (depthFormat != VK_FORMAT_UNDEFINED)
-	{
-		renderInfo.pDepthAttachment = &depthAttachment;
-	}
-	vkCmdBeginRendering(resource.commandBuffer, &renderInfo);
-
 	return resource.commandBuffer;
 }
 
 void Swapchain::Present()
 {
 	const auto& resource = frameResources_[currentFrame_];
-
-	vkCmdEndRendering(resource.commandBuffer);
-
-	Transition::ColorAttachmentToPresentable(GetCurrentImage(), resource.commandBuffer);
 
 	check(vkEndCommandBuffer(resource.commandBuffer));
 
@@ -215,7 +173,7 @@ void Swapchain::Present()
 	{
 		check(result, "Failed to present image!");
 	}
-	currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
+	currentFrame_ = (currentFrame_ + 1) % framesInFlight_;
 }
 
 
@@ -229,31 +187,42 @@ VkImageView Swapchain::GetCurrentImageView() const
 	return imageViews_[imageIndex_];
 }
 
-
-void Swapchain::Release()
+VkImageView Swapchain::GetDepthImageView() const
 {
-	pool.Destroy();
+	return depthImageView_;
+}
 
-	vkDestroyImageView(device_->device, depthImageView_, nullptr);
-	vmaDestroyImage(device_->allocator, depthImage_, depthAllocation_);
+VkExtent2D Swapchain::GetExtent() const
+{
+	return surfaceExtent_;
+}
+
+VkFormat Swapchain::GetFormat() const
+{
+	return imageFormat;
+}
+
+
+Swapchain::~Swapchain()
+{
+	vkDestroyImageView(device_.device, depthImageView_, nullptr);
+	vmaDestroyImage(device_.allocator, depthImage_, depthAllocation_);
 	//
 	for (const auto& resource : frameResources_)
 	{
-		vkDestroyFence(device_->device, resource.fence, nullptr);
-		vkDestroySemaphore(device_->device, resource.acquire, nullptr);
-		vkDestroySemaphore(device_->device, resource.present, nullptr);
+		vkDestroyFence(device_.device, resource.fence, nullptr);
+		vkDestroySemaphore(device_.device, resource.acquire, nullptr);
+		vkDestroySemaphore(device_.device, resource.present, nullptr);
 	}
-	vkDestroyCommandPool(device_->device, commandPool_, nullptr);
+	vkDestroyCommandPool(device_.device, commandPool_, nullptr);
 	frameResources_.clear();
 	//
 	for (const auto& imageView : imageViews_)
 	{
-		vkDestroyImageView(device_->device, imageView, nullptr);
+		vkDestroyImageView(device_.device, imageView, nullptr);
 	}
-	vkDestroySwapchainKHR(device_->device, swapchain_, nullptr);
-	swapchain_ = nullptr;
+	vkDestroySwapchainKHR(device_.device, swapchain_, nullptr);
 }
-
 
 
 

@@ -9,16 +9,32 @@
 class Device
 {
 public:
-	Device() = default;
-	
-	Device(VkPhysicalDevice physicalDevice, VkDevice device, VmaAllocator allocator);
+	struct Queue
+	{
+		VkQueue queue;
+		uint32_t family;
+	};
 
+	Device() = default;
+
+	void init(void* window);
+	void deinit();
+	
+	VkInstance instance{};
+	VkDebugUtilsMessengerEXT messenger{};
+	VkSurfaceKHR surface{};
 	VkDevice device{};
 	VkPhysicalDevice physicalDevice{};
 	VmaAllocator allocator{};
 
+	VkCommandPool graphicsPool{};
+	Queue graphicsQueue{};
 
+	Queue transferQueue{};
 
+	VkPhysicalDeviceDescriptorIndexingProperties indexingProperties{};
+
+	uint32_t getMaxFramesInFlight() const;
 	VkFormat getDepthFormat() const;
 
 private:
