@@ -187,11 +187,13 @@ void Device::init(void* window)
 	vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
 
 	graphicsPool = CreateInfo::createCommandPool(device, graphicsQueue.family);
+	transferPool = CreateInfo::createCommandPool(device, transferQueue.family);
 }
 
 void Device::deinit()
 {
 	vkDestroyCommandPool(device, graphicsPool, nullptr);
+	vkDestroyCommandPool(device, transferPool, nullptr);
 
 	vmaDestroyAllocator(allocator);
 
@@ -204,6 +206,11 @@ void Device::deinit()
 uint32_t Device::getMaxFramesInFlight() const
 {
 	return 2;
+}
+
+VkFormat Device::getSurfaceFormat() const
+{
+	return VK_FORMAT_R8G8B8A8_SRGB;
 }
 
 VkFormat Device::getDepthFormat() const

@@ -91,6 +91,121 @@ VkRenderPass CreateInfo::createRenderPass(VkDevice device, const VkAttachmentDes
 	return renderPass;
 }
 
+VkPipelineShaderStageCreateInfo CreateInfo::ShaderStage(VkShaderStageFlagBits stage, VkShaderModule module)
+{
+	VkPipelineShaderStageCreateInfo shaderStage{};
+	shaderStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStage.stage = stage;
+	shaderStage.module = module;
+	shaderStage.pName = "main";
+	return shaderStage;
+}
+
+VkPipelineVertexInputStateCreateInfo CreateInfo::VertexInputState(VkVertexInputBindingDescription* pBinding, size_t bindingCount, VkVertexInputAttributeDescription* pAttribute, size_t attributeCount)
+{
+	VkPipelineVertexInputStateCreateInfo vertexInputState{};
+	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputState.pVertexBindingDescriptions = pBinding;
+	vertexInputState.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingCount);
+	vertexInputState.pVertexAttributeDescriptions = pAttribute;
+	vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeCount);
+	return vertexInputState;
+}
+
+VkPipelineInputAssemblyStateCreateInfo CreateInfo::InputAssemblyState(VkPrimitiveTopology topology)
+{
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{};
+	inputAssemblyState.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyState.topology = topology;
+	inputAssemblyState.primitiveRestartEnable = VK_FALSE;
+	return inputAssemblyState;
+}
+
+VkPipelineViewportStateCreateInfo CreateInfo::ViewportState()
+{
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.scissorCount = 1;
+	viewportState.viewportCount = 1;
+	return viewportState;
+}
+
+VkPipelineRasterizationStateCreateInfo CreateInfo::RasterizationState(VkBool32 depthClamp, VkCullModeFlags cullMode, VkFrontFace frontFace)
+{
+	VkPipelineRasterizationStateCreateInfo rasterizationState{};
+	rasterizationState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationState.depthClampEnable = depthClamp;
+	rasterizationState.rasterizerDiscardEnable = VK_FALSE;
+	rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizationState.lineWidth = 1.0f;
+	rasterizationState.cullMode = cullMode;
+	rasterizationState.frontFace = frontFace;
+	rasterizationState.depthBiasEnable = VK_FALSE;
+	return rasterizationState;
+}
+
+VkPipelineMultisampleStateCreateInfo CreateInfo::MultisampleState()
+{
+	VkPipelineMultisampleStateCreateInfo  multisampleState{};
+	multisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampleState.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	return multisampleState;
+}
+
+VkPipelineDepthStencilStateCreateInfo CreateInfo::DepthStencilState()
+{
+	VkPipelineDepthStencilStateCreateInfo depthStencilState{};
+	depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilState.depthWriteEnable = VK_TRUE;
+	depthStencilState.depthTestEnable = VK_TRUE;
+	depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	return depthStencilState;
+}
+
+VkPipelineColorBlendAttachmentState CreateInfo::ColorBlendAttachment()
+{
+	VkPipelineColorBlendAttachmentState attachment{}; // Normal Color Blending
+	attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	attachment.blendEnable = VK_TRUE;
+	attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	attachment.colorBlendOp = VK_BLEND_OP_ADD;
+	attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	return attachment;
+}
+
+VkPipelineColorBlendStateCreateInfo CreateInfo::ColorBlendState(VkPipelineColorBlendAttachmentState* pAttachment, size_t attachmentCount)
+{
+	VkPipelineColorBlendStateCreateInfo colorBlendState{};
+	colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendState.pAttachments = pAttachment;
+	colorBlendState.attachmentCount = static_cast<uint32_t>(attachmentCount);
+	return colorBlendState;
+}
+
+VkPipelineDynamicStateCreateInfo CreateInfo::DynamicState(VkDynamicState* pDynamicState, size_t dynamicStateCount)
+{
+	VkPipelineDynamicStateCreateInfo dynamicState{};
+	dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicState.pDynamicStates = pDynamicState;
+	dynamicState.dynamicStateCount = dynamicStateCount;
+	return dynamicState;
+}
+
+VkPipelineRenderingCreateInfo CreateInfo::Rendering(VkFormat* colorFormats, size_t colorFormatCount, VkFormat depthFormat)
+{
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colorFormatCount);
+	renderingInfo.pColorAttachmentFormats = colorFormats;
+	renderingInfo.depthAttachmentFormat = depthFormat;
+	return renderingInfo;
+}
+
+// ----
+
 void Detail::setName(Device& device, VkObjectType type, void* ptr, const std::string& name)
 {
 #ifndef NDEBUG

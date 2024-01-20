@@ -6,6 +6,8 @@
 
 #include <vulkan/vulkan.h>
 
+// Check
+
 void check(bool condition, const std::string& message = "", const std::source_location& location = std::source_location::current());
 
 inline void check(VkResult result, const std::string& message = "", const std::source_location& location = std::source_location::current())
@@ -24,7 +26,6 @@ void check(auto condition, const std::string& message = "", const std::source_lo
 	check(static_cast<bool>(condition), message, location);
 }
 
-
 namespace CreateInfo {
 	VkFence createFence(VkDevice device, VkFenceCreateFlags flags);
 	VkSemaphore createBinarySemaphore(VkDevice device);
@@ -34,6 +35,18 @@ namespace CreateInfo {
 	void performOneTimeAction(VkDevice device, VkQueue queue, VkCommandPool commandPool, const std::function<void(VkCommandBuffer)>& action);
 
 	VkRenderPass createRenderPass(VkDevice device, const VkAttachmentDescription2* pAttachments, uint32_t attachmentCount, const VkSubpassDescription2* pSubpass, uint32_t subpassCount, const VkSubpassDependency2* pDependency, uint32_t dependencyCount);
+
+	VkPipelineShaderStageCreateInfo ShaderStage(VkShaderStageFlagBits stage, VkShaderModule module);
+	VkPipelineVertexInputStateCreateInfo VertexInputState(VkVertexInputBindingDescription* pBinding, size_t bindingCount, VkVertexInputAttributeDescription* pAttribute, size_t attributeCount);
+	VkPipelineInputAssemblyStateCreateInfo InputAssemblyState(VkPrimitiveTopology topology); 
+	VkPipelineViewportStateCreateInfo ViewportState();
+	VkPipelineRasterizationStateCreateInfo RasterizationState(VkBool32 depthClamp, VkCullModeFlags cullMode, VkFrontFace frontFace);
+	VkPipelineMultisampleStateCreateInfo MultisampleState();
+	VkPipelineDepthStencilStateCreateInfo DepthStencilState();
+	VkPipelineColorBlendAttachmentState ColorBlendAttachment();
+	VkPipelineColorBlendStateCreateInfo ColorBlendState(VkPipelineColorBlendAttachmentState* pAttachment, size_t attachmentCount);
+	VkPipelineDynamicStateCreateInfo DynamicState(VkDynamicState* pDynamicState, size_t dynamicStateCount);
+	VkPipelineRenderingCreateInfo Rendering(VkFormat* colorFormats, size_t colorFormatCount, VkFormat depthFormat);
 }
 
 // Connecting pNext
@@ -66,4 +79,11 @@ template<>
 inline void setName<VkQueue>(Device& device, VkQueue queue, const std::string& name)
 {
 	Detail::setName(device, VK_OBJECT_TYPE_QUEUE, queue, name);
+}
+
+// Misc
+template<typename T>
+size_t SizeInBytes(const std::vector<T>& vector)
+{
+	return vector.size() * sizeof(T);
 }

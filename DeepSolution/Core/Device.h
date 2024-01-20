@@ -30,11 +30,13 @@ public:
 	VkCommandPool graphicsPool{};
 	Queue graphicsQueue{};
 
+	VkCommandPool transferPool{};
 	Queue transferQueue{};
 
 	VkPhysicalDeviceDescriptorIndexingProperties indexingProperties{};
 
 	uint32_t getMaxFramesInFlight() const;
+	VkFormat getSurfaceFormat() const;
 	VkFormat getDepthFormat() const;
 
 private:

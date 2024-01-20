@@ -1,6 +1,6 @@
 #version 450
 
-layout(binding = 0) uniform GlobalUniform {
+layout(set = 0, binding = 0) uniform GlobalUniform {
     mat4 view;
     mat4 projection;
 } ubo;
@@ -12,7 +12,12 @@ layout(location = 3) in vec2 inTexCoord;
 
 layout(location = 0) out vec2 fragTexCoord;
 
+layout( push_constant ) uniform PushConstants
+{
+	mat4 model;
+} constants;
+
 void main() {
-    gl_Position = ubo.projection * ubo.view * vec4(inPosition, 1.0);
+    gl_Position = ubo.projection * ubo.view * constants.model * vec4(inPosition, 1.0);
     fragTexCoord = inTexCoord;
 }
