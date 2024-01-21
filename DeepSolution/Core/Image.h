@@ -3,21 +3,24 @@
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 
+class Device;
 /**
  * @brief Bundle of image, image view, allocation, and sampler.
 */
 class Image
 {
 public:
-	Image() = default;
-	Image(VkDevice device, VmaAllocator allocator, const VkImageCreateInfo& imageInfo);
+	Image(Device& device, const VkImageCreateInfo& imageInfo);
 
 	void AttachImageView(VkImageAspectFlags flags);
 	void AttachSampler(const VkSamplerCreateInfo& samplerCI);
+	void Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const;
 
 	VkImage Get() const;
+	VkImageView GetView() const;
+	VkSampler GetSampler() const;
 
-	void Release();
+	~Image();
 private:
 	VkImage image_{};
 	VkImageView imageView_{};
@@ -25,8 +28,8 @@ private:
 	VkSampler sampler_{};
 
 	VkFormat format_{};
+	int width, height;
 
 	// For cleanup
-	VkDevice device_{};
-	VmaAllocator allocator_{};
+	Device& device_;
 };

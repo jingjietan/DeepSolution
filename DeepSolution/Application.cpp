@@ -32,7 +32,7 @@ Application::Application(int width, int height)
 		app->camera_->moveDirection(dX, dY);
 		});
 
-	camera_ = std::make_unique<Camera>(glm::vec3(0, 0, 0), 0.f, -177.f, width, height, 0.01f, 100.0f);
+	camera_ = std::make_unique<Camera>(glm::vec3(0, 2, 0), 0.f, -177.f, width, height, 0.01f, 50.0f);
 
 	device_.init(window_);
 	
@@ -62,6 +62,7 @@ Application::Application(int width, int height)
 
 	scene_ = std::make_unique<Scene>(device_);
 	scene_->loadGLTF("assets/subway/scene.gltf");
+	// scene_->loadGLTF("assets/subway/scene.glb");
 }
 
 void Application::run()
@@ -152,55 +153,12 @@ void Application::Draw()
 	}
 
 	// Scene Rendering
-	auto commandBuffer = swapchain_->Acquire();
+	auto commandBuffer = swapchain_->Acquire(width , height);
 
 	Transition::UndefinedToColorAttachment(swapchain_->GetCurrentImage(), commandBuffer);
 
-	// Begin Rendering
-	VkRenderingAttachmentInfo colorAttachment{};
-	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAttachment.imageView = swapchain_->GetCurrentImageView();
-	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachment.clearValue = { 0.7f, 0.7f, 0.7f, 1.f };
-
-	VkRenderingAttachmentInfo depthAttachment{};
-	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	depthAttachment.imageView = swapchain_->GetDepthImageView();
-	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	depthAttachment.clearValue = { 1.0f, 0 };
-
-	VkRenderingInfo renderInfo{};
-	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	renderInfo.renderArea.offset = { 0, 0 };
-	renderInfo.renderArea.extent = swapchain_->GetExtent();
-	renderInfo.layerCount = 1;
-	renderInfo.colorAttachmentCount = 1;
-	renderInfo.pColorAttachments = &colorAttachment;
-	renderInfo.pDepthAttachment = &depthAttachment;
+	scene_->draw(commandBuffer, *camera_, swapchain_->GetCurrentImageView(), swapchain_->GetDepthImageView());
 	
-	vkCmdBeginRendering(commandBuffer, &renderInfo);
-
-	VkViewport viewport{}; 
-	viewport.x = 0.0f;
-	viewport.y = static_cast<float>(swapchain_->GetExtent().height);
-	viewport.width = static_cast<float>(swapchain_->GetExtent().width);
-	viewport.height = -static_cast<float>(swapchain_->GetExtent().height);
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-	VkRect2D scissor{};
-	scissor.extent = swapchain_->GetExtent();
-	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-	scene_->draw(commandBuffer, *camera_);
-	
-	vkCmdEndRendering(commandBuffer);
-
 	// ImGui Rendering
 	imgui_->Draw(swapchain_->GetCurrentImageView(), swapchain_->GetExtent(), commandBuffer);
 	

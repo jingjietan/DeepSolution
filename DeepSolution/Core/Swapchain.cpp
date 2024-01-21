@@ -107,8 +107,13 @@ void Swapchain::Refresh()
 	}
 }
 
-VkCommandBuffer Swapchain::Acquire()
+VkCommandBuffer Swapchain::Acquire(int width, int height)
 {
+	if (width != surfaceExtent_.width || height != surfaceExtent_.height)
+	{
+		Refresh();
+	}
+
 	const auto& resource = frameResources_[currentFrame_];
 	vkWaitForFences(device_.device, 1, &resource.fence, VK_TRUE, UINT64_MAX);
 	

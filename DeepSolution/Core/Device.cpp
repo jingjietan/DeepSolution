@@ -68,10 +68,15 @@ void Device::init(void* window)
 		bufferDeviceAddress.pNext = &dynamicRendering;
 		VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptorIndexing{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
 		descriptorIndexing.runtimeDescriptorArray = VK_TRUE;
+		descriptorIndexing.descriptorBindingPartiallyBound = VK_TRUE;
+		descriptorIndexing.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+		descriptorIndexing.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+		descriptorIndexing.descriptorBindingVariableDescriptorCount = VK_TRUE;
 		descriptorIndexing.pNext = &bufferDeviceAddress;
 
 		VkPhysicalDeviceFeatures features{};
 		features.samplerAnisotropy = VK_TRUE;
+		features.independentBlend = VK_TRUE;
 
 		vkb::PhysicalDeviceSelector physicalDeviceSelector{ temporaryInstance };
 		auto physicalDeviceSelectorResult = physicalDeviceSelector

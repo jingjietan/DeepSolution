@@ -5,9 +5,11 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include "../Camera.h"
+#include "../Core/Image.h" // todo: cannot forward declare image?
 
 class Device;
 class Buffer;
+class Image;
 
 struct Allocation
 {
@@ -24,15 +26,11 @@ struct Submesh
 	int32_t vertexOffset;
 
 	VkPipeline pipeline;
+	int colorId;
+
+	bool transparent;
 };
-/*
-struct Transform
-{
-	std::unique_ptr<Transform> parent;
-	std::vector<Transform> children;
-	glm::mat4 matrix;
-};
-*/
+
 struct Mesh
 {
 	std::vector<Submesh> submeshes;
@@ -54,6 +52,7 @@ struct GlobalUniform
 struct PushConstant
 {
 	glm::mat4 model;
+	int colorId;
 };
 
 class Scene
@@ -63,7 +62,7 @@ public:
 
 	void loadGLTF(const std::string& path);
 
-	void draw(VkCommandBuffer commandBuffer, Camera& camera);
+	void draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colorView, VkImageView depthView);
 
 	~Scene();
 private:
@@ -73,18 +72,42 @@ private:
 
 	std::unique_ptr<Buffer> vertexBuffer{};
 	std::unique_ptr<Buffer> indexBuffer{};
+	std::vector<std::unique_ptr<Image>> textures{};
 
 	std::vector<std::unique_ptr<Node>> nodes{};
 
+	void recreateAccumReveal(int width, int height);
+	std::unique_ptr<Image> accum;
+	std::unique_ptr<Image> reveal;
+	int compositeWidth;
+	int compositeHeight;
+	std::vector<std::pair<std::unique_ptr<Image>, int>> recycling;
+	void cleanupRecycling();
+
 	VkShaderModule vertexShader_{}; // For testing
 	VkShaderModule fragmentShader_{};
+	VkShaderModule transparentVertex_{};
+	VkShaderModule transparentFragment_{};
+
+	std::unique_ptr<Buffer> quadVerticesBuffer;
+	std::unique_ptr<Buffer> quadIndicesBuffer;
+	VkDescriptorPool compositingPool{};
+	VkDescriptorSetLayout compositingSetLayout{};
+	VkDescriptorSet compositingSet{};
+	VkPipelineLayout compositingPipelineLayout{};
+	VkPipeline compositingPipeline{};
 
 	VkDescriptorPool globalPool_{};
 	VkDescriptorSetLayout globalSetLayout{};
+
+	VkDescriptorPool bindlessPool{};
+	VkDescriptorSetLayout bindlessSetLayout{};
+
 	VkPipelineLayout pipelineLayout_{};
 
 	std::vector<std::unique_ptr<Buffer>> globalUniformBuffers_;
 	std::vector<VkDescriptorSet> globalSets_;
+	VkDescriptorSet bindlessSet_{};
 
 	static Allocation performAllocation(VmaVirtualBlock block, VkDeviceSize size);
 

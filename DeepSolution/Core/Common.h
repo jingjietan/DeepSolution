@@ -83,7 +83,7 @@ inline void setName<VkQueue>(Device& device, VkQueue queue, const std::string& n
 
 // Misc
 template<typename T>
-size_t SizeInBytes(const std::vector<T>& vector)
+constexpr size_t SizeInBytes(const std::vector<T>& vector)
 {
 	return vector.size() * sizeof(T);
 }

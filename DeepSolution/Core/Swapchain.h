@@ -23,7 +23,7 @@ public:
 	 * @brief Acquire an image and updates the internal image index.
 	 * @return A command buffer that has begin recording.
 	*/
-	VkCommandBuffer Acquire();
+	VkCommandBuffer Acquire(int width, int height);
 
 	/**
 	 * @brief Submits the frame command buffer and presents the corresponding image index
