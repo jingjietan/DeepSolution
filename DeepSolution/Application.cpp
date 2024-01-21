@@ -61,8 +61,8 @@ Application::Application(int width, int height)
 	swapchain_ = std::make_unique<Swapchain>(device_, device_.getDepthFormat());
 
 	scene_ = std::make_unique<Scene>(device_);
-	scene_->loadGLTF("assets/subway/scene.gltf");
-	// scene_->loadGLTF("assets/subway/scene.glb");
+	// scene_->loadGLTF("assets/subway/scene.gltf");
+	scene_->loadGLTF("assets/ABeautifulGame/glTF/ABeautifulGame.gltf");
 }
 
 void Application::run()
