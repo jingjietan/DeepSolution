@@ -76,6 +76,7 @@ private:
 
 	std::vector<std::unique_ptr<Node>> nodes{};
 
+	// Is this necessary?
 	void recreateAccumReveal(int width, int height);
 	std::unique_ptr<Image> accum;
 	std::unique_ptr<Image> reveal;
@@ -96,6 +97,9 @@ private:
 	VkDescriptorSet compositingSet{};
 	VkPipelineLayout compositingPipelineLayout{};
 	VkPipeline compositingPipeline{};
+
+	std::unique_ptr<Image> defaultTextures[4];
+	void initialiseDefaultTextures();
 
 	VkDescriptorPool globalPool_{};
 	VkDescriptorSetLayout globalSetLayout{};

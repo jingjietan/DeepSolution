@@ -435,8 +435,14 @@ Scene::Scene(Device& device) : device_(device)
 	VkDescriptorSetLayoutBinding bindlessSetBinding0{};
 	bindlessSetBinding0.binding = 0;
 	bindlessSetBinding0.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindlessSetBinding0.descriptorCount = 10000;
+	bindlessSetBinding0.descriptorCount = 4;
 	bindlessSetBinding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutBinding bindlessSetBinding1{};
+	bindlessSetBinding1.binding = 1;
+	bindlessSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindlessSetBinding1.descriptorCount = 10000;
+	bindlessSetBinding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	VkDescriptorBindingFlags bindlessFlags = 
 		VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT |
@@ -444,19 +450,24 @@ Scene::Scene(Device& device) : device_(device)
 		VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT |
 		VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT_EXT;
 
+	std::array bindingFlags{ (VkDescriptorBindingFlags)VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT, bindlessFlags, };
+
 	VkDescriptorSetLayoutBindingFlagsCreateInfo bindlessSetLayoutCIFlags{};
 	bindlessSetLayoutCIFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-	bindlessSetLayoutCIFlags.bindingCount = 1;
-	bindlessSetLayoutCIFlags.pBindingFlags = &bindlessFlags;
+	bindlessSetLayoutCIFlags.bindingCount = bindingFlags.size();
+	bindlessSetLayoutCIFlags.pBindingFlags = bindingFlags.data();
+
+	std::array bindings{ bindlessSetBinding0, bindlessSetBinding1 };
 
 	VkDescriptorSetLayoutCreateInfo bindlessSetLayoutCI{};
 	bindlessSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	bindlessSetLayoutCI.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-	bindlessSetLayoutCI.bindingCount = 1;
-	bindlessSetLayoutCI.pBindings = &bindlessSetBinding0;
+	bindlessSetLayoutCI.bindingCount = bindings.size();
+	bindlessSetLayoutCI.pBindings = bindings.data();
 	Connect(bindlessSetLayoutCI, bindlessSetLayoutCIFlags);
 
 	check(vkCreateDescriptorSetLayout(device.device, &bindlessSetLayoutCI, nullptr, &bindlessSetLayout));
+	setName(device_, bindlessSetLayout, "Bindless Set Layout");
 
 	// Model Push Constant
 	VkPushConstantRange pushRange{};
@@ -483,6 +494,7 @@ Scene::Scene(Device& device) : device_(device)
 	poolCI.poolSizeCount = 1;
 	poolCI.pPoolSizes = &poolSize;
 	check(vkCreateDescriptorPool(device.device, &poolCI, nullptr, &globalPool_));
+	setName(device_, globalPool_, "Global Pool");
 
 	VkDescriptorPoolSize bindlessImagePoolSize{};
 	bindlessImagePoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -495,6 +507,7 @@ Scene::Scene(Device& device) : device_(device)
 	bindlessPoolCI.poolSizeCount = 1;
 	bindlessPoolCI.pPoolSizes = &bindlessImagePoolSize;
 	check(vkCreateDescriptorPool(device.device, &bindlessPoolCI, nullptr, &bindlessPool));
+	setName(device_, bindlessPool, "Bindless Pool");
 
 	// Sets
 	std::vector<VkDescriptorSetLayout> globalLayouts{ maxFramesInFlight, globalSetLayout };
@@ -505,6 +518,10 @@ Scene::Scene(Device& device) : device_(device)
 	allocateInfo.descriptorSetCount = maxFramesInFlight;
 	allocateInfo.pSetLayouts = globalLayouts.data();
 	check(vkAllocateDescriptorSets(device.device, &allocateInfo, globalSets_.data()));
+	for (size_t i = 0; i < globalSets_.size(); i++)
+	{
+		setName(device_, globalSets_[i], fmt::format("Global Set {}", i));
+	}
 
 	uint32_t descriptorCount = 2048;
 	VkDescriptorSetVariableDescriptorCountAllocateInfo varaibleInfo{};
@@ -519,6 +536,10 @@ Scene::Scene(Device& device) : device_(device)
 	bindlessAllocateInfo.pSetLayouts = &bindlessSetLayout;
 	Connect(bindlessAllocateInfo, varaibleInfo);
 	check(vkAllocateDescriptorSets(device.device, &bindlessAllocateInfo, &bindlessSet_));
+	setName(device_, bindlessSet_, "Bindless Set");
+
+	// Set is done! Time to write.
+	initialiseDefaultTextures();
 
 	globalUniformBuffers_.resize(maxFramesInFlight);
 	for (size_t i = 0; i < maxFramesInFlight; i++)
@@ -634,7 +655,7 @@ void Scene::loadGLTF(const std::string& path)
 	writeSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writeSet.descriptorCount = descImageInfos.size();
 	writeSet.dstArrayElement = startingElement;
-	writeSet.dstBinding = 0;
+	writeSet.dstBinding = 1;
 	writeSet.pImageInfo = descImageInfos.data();
 	writeSet.dstSet = bindlessSet_;
 
@@ -905,7 +926,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 	std::vector<RenderComponent> transparentGroup;
 
 	const auto group = [&](const auto& groupFn, const std::unique_ptr<Node>& node, glm::mat4 parent) -> void {
-		glm::mat4 model = parent * node->matrix;
+		glm::mat4 model = node->matrix * parent;
 		if (node->mesh)
 		{
 			RenderComponent opaqueComponent;
@@ -1329,4 +1350,76 @@ Allocation Scene::performAllocation(VmaVirtualBlock block, VkDeviceSize size)
 		SPDLOG_WARN("Allocation failed!");
 	}
 	return allocation;
+}
+
+void Scene::initialiseDefaultTextures()
+{
+	std::array<uint8_t, 4> colorData_{ 0xff,0xff,0xff,0xff };
+	auto commandBuffer = CreateInfo::allocateCommandBuffer(device_.device, device_.graphicsPool);
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+	Buffer stagingBuffer(device_, 4 * sizeof(uint8_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+	stagingBuffer.upload(colorData_.data(), 4 * sizeof(uint8_t));
+	{
+		VkImageCreateInfo imageCI{};
+		imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageCI.imageType = VK_IMAGE_TYPE_2D;
+		imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageCI.arrayLayers = 1;
+		imageCI.extent = { 1, 1, 1 };
+		imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageCI.mipLevels = 1;
+		imageCI.format = VK_FORMAT_R8G8B8A8_SRGB;
+		imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		defaultTextures[0] = std::make_unique<Image>(device_, imageCI);
+
+		defaultTextures[0]->AttachImageView(VK_IMAGE_ASPECT_COLOR_BIT);
+
+		VkSamplerCreateInfo samplerCI{};
+		samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+		samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+		samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+		samplerCI.minFilter = VK_FILTER_LINEAR;
+		samplerCI.magFilter = VK_FILTER_LINEAR;
+		defaultTextures[0]->AttachSampler(samplerCI);
+
+		Transition::UndefinedToTransferDestination(defaultTextures[0]->Get(), commandBuffer);
+
+		defaultTextures[0]->Upload(commandBuffer, stagingBuffer);
+		
+		Transition::TransferDestinationToShaderReadOptimal(defaultTextures[0]->Get(), commandBuffer);
+	}
+
+	vkEndCommandBuffer(commandBuffer);
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+
+	vkQueueSubmit(device_.graphicsQueue.queue, 1, &submitInfo, nullptr);
+	vkQueueWaitIdle(device_.graphicsQueue.queue);
+
+	// Write
+	VkDescriptorImageInfo descImageInfo{};
+	descImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	descImageInfo.imageView = defaultTextures[0]->GetView();
+	descImageInfo.sampler = defaultTextures[0]->GetSampler();
+	
+	VkWriteDescriptorSet writeSet{};
+	writeSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writeSet.descriptorCount = 1;
+	writeSet.dstArrayElement = 0;
+	writeSet.dstBinding = 0;
+	writeSet.pImageInfo = &descImageInfo;
+	writeSet.dstSet = bindlessSet_;
+
+	vkUpdateDescriptorSets(device_.device, 1, &writeSet, 0, nullptr);
 }

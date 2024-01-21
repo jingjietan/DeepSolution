@@ -81,6 +81,24 @@ inline void setName<VkQueue>(Device& device, VkQueue queue, const std::string& n
 	Detail::setName(device, VK_OBJECT_TYPE_QUEUE, queue, name);
 }
 
+template<>
+inline void setName<VkDescriptorSet>(Device& device, VkDescriptorSet queue, const std::string& name)
+{
+	Detail::setName(device, VK_OBJECT_TYPE_DESCRIPTOR_SET, queue, name);
+}
+
+template<>
+inline void setName<VkDescriptorSetLayout>(Device& device, VkDescriptorSetLayout queue, const std::string& name)
+{
+	Detail::setName(device, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, queue, name);
+}
+
+template<>
+inline void setName<VkDescriptorPool>(Device& device, VkDescriptorPool queue, const std::string& name)
+{
+	Detail::setName(device, VK_OBJECT_TYPE_DESCRIPTOR_POOL, queue, name);
+}
+
 // Misc
 template<typename T>
 constexpr size_t SizeInBytes(const std::vector<T>& vector)

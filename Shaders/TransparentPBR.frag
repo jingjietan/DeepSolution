@@ -8,7 +8,7 @@ layout(location = 1) in float depth;
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out float outReveal;
 
-layout(set = 1, binding = 0) uniform sampler2D textures[];
+layout(set = 1, binding = 1) uniform sampler2D textures[];
 
 layout( push_constant ) uniform PushConstants
 {
