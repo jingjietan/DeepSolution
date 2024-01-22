@@ -795,18 +795,13 @@ void Scene::loadGLTF(const std::string& path)
 		const auto& node = model.nodes[nodeId];
 
 		auto reprNode = std::make_unique<Node>();
-
-		if (node.matrix.size() == 16)
-		{
-			reprNode->matrix = glm::make_mat4(node.matrix.data());
-		}
-		else
-		{
-			auto t = node.translation.size() == 3 ? glm::vec3(glm::make_vec3(node.translation.data())) : glm::vec3(0.0f);
-			auto s = node.scale.size() == 3 ? glm::vec3(glm::make_vec3(node.scale.data())) : glm::vec3(1.0f);
-			auto r = node.rotation.size() == 4 ? glm::quat(glm::make_quat(node.rotation.data())) : glm::identity<glm::quat>();
-			reprNode->matrix = glm::translate(glm::mat4(1.0f), t) * glm::mat4(r) * glm::scale(glm::mat4(1.0f), s);
-		}
+		reprNode->name = node.name;
+	
+		reprNode->matrix = node.matrix.size() == 16 ? glm::mat4(glm::make_mat4(node.matrix.data())) : glm::mat4(1.0f);
+		reprNode->translation = node.translation.size() == 3 ? glm::vec3(glm::make_vec3(node.translation.data())) : glm::vec3(0.0f);
+		reprNode->scale = node.scale.size() == 3 ? glm::vec3(glm::make_vec3(node.scale.data())) : glm::vec3(1.0f);
+		reprNode->rotation = node.rotation.size() == 4 ? glm::quat(glm::make_quat(node.rotation.data())) : glm::identity<glm::quat>();
+		
 
 		if (node.mesh != -1)
 		{
@@ -862,12 +857,13 @@ void Scene::loadGLTF(const std::string& path)
 
 				const auto colorId = material.pbrMetallicRoughness.baseColorTexture.index;
 				
-				const auto transparent = material.alphaMode == "BLEND";
-
+				const auto transparent = false; //material.alphaMode == "BLEND";
+				
 				// Pipeline
 				VkPipeline pipeline = transparent ? 
 					transparentPipeline(material.doubleSided, primitive.mode) : 
 					opaquePipeline(material.doubleSided, primitive.mode);
+			
 
 				gpuMesh->submeshes.push_back(Submesh{
 					.vertexAlloc = vertexAlloc,
@@ -926,7 +922,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 	std::vector<RenderComponent> transparentGroup;
 
 	const auto group = [&](const auto& groupFn, const std::unique_ptr<Node>& node, glm::mat4 parent) -> void {
-		glm::mat4 model = node->matrix * parent;
+		glm::mat4 model = parent * node->getMatrix();
+		
 		if (node->mesh)
 		{
 			RenderComponent opaqueComponent;
@@ -960,7 +957,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		{
 			groupFn(groupFn, child, model);
 		}
-		};
+	};
 
 	for (const auto& node : nodes)
 	{
@@ -1002,8 +999,6 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		viewport.y = camera.viewportHeight;
 		viewport.width = camera.viewportWidth;
 		viewport.height = -camera.viewportHeight;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
 		VkRect2D scissor{};
@@ -1027,6 +1022,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 		label.pLabelName = "Opaque";
 		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
+		
 		for (const auto& opaque : opaqueGroup)
 		{
 			PushConstant push{};
@@ -1040,6 +1036,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 				vkCmdDrawIndexed(commandBuffer, submesh.indexCount, 1, submesh.firstIndex, submesh.vertexOffset, 0);
 			}
 		}
+
 		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
 		vkCmdEndRendering(commandBuffer);
@@ -1422,4 +1419,9 @@ void Scene::initialiseDefaultTextures()
 	writeSet.dstSet = bindlessSet_;
 
 	vkUpdateDescriptorSets(device_.device, 1, &writeSet, 0, nullptr);
+}
+
+glm::mat4 Node::getMatrix() const
+{
+	return glm::translate(glm::mat4(1.0f), translation) * glm::mat4(rotation) * glm::scale(glm::mat4(1.0f), scale) * matrix;
 }

@@ -12,6 +12,9 @@ target_include_directories(imgui PUBLIC imgui)
 target_link_libraries(imgui glfw Vulkan::Headers)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
 
+
+add_subdirectory(glm)
+
 include(FetchContent)
 #FetchContent_Declare (
 #	tracy

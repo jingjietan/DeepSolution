@@ -15,7 +15,7 @@ layout(location = 0) out vec2 fragTexCoord;
 layout( push_constant ) uniform PushConstants
 {
 	mat4 model;
-    uint colorId;
+    int colorId;
 } constants;
 
 void main() {

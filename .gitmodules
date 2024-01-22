@@ -2,3 +2,9 @@
 	path = third-party/imgui
 	url = https://github.com/ocornut/imgui.git
 	branch = docking
+[submodule "assets/glTF-Sample-Assets"]
+	path = assets/glTF-Sample-Assets
+	url = https://github.com/KhronosGroup/glTF-Sample-Assets.git
+[submodule "third-party/glm"]
+	path = third-party/glm
+	url = https://github.com/g-truc/glm.git

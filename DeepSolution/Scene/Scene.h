@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include "../Camera.h"
 #include "../Core/Image.h" // todo: cannot forward declare image?
 
@@ -39,7 +40,12 @@ struct Mesh
 struct Node
 {
 	std::vector<std::unique_ptr<Node>> childrens;
+	glm::vec3 scale;
+	glm::quat rotation;
+	glm::vec3 translation;
 	glm::mat4 matrix;
+	std::string name;
+	glm::mat4 getMatrix() const;
 	std::unique_ptr<Mesh> mesh;
 };
 
