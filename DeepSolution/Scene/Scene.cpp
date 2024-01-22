@@ -802,7 +802,6 @@ void Scene::loadGLTF(const std::string& path)
 		reprNode->scale = node.scale.size() == 3 ? glm::vec3(glm::make_vec3(node.scale.data())) : glm::vec3(1.0f);
 		reprNode->rotation = node.rotation.size() == 4 ? glm::quat(glm::make_quat(node.rotation.data())) : glm::identity<glm::quat>();
 		
-
 		if (node.mesh != -1)
 		{
 			auto gpuMesh = std::make_unique<Mesh>();
@@ -999,6 +998,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		viewport.y = camera.viewportHeight;
 		viewport.width = camera.viewportWidth;
 		viewport.height = -camera.viewportHeight;
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
 		VkRect2D scissor{};
@@ -1379,9 +1380,9 @@ void Scene::initialiseDefaultTextures()
 
 		VkSamplerCreateInfo samplerCI{};
 		samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-		samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-		samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-		samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+		samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 		samplerCI.minFilter = VK_FILTER_LINEAR;
 		samplerCI.magFilter = VK_FILTER_LINEAR;
 		defaultTextures[0]->AttachSampler(samplerCI);

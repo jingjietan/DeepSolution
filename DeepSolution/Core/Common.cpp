@@ -158,7 +158,9 @@ VkPipelineDepthStencilStateCreateInfo CreateInfo::DepthStencilState()
 	depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthStencilState.depthWriteEnable = VK_TRUE;
 	depthStencilState.depthTestEnable = VK_TRUE;
-	depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencilState.minDepthBounds = 0.f;
+	depthStencilState.maxDepthBounds = 1.f;
 	return depthStencilState;
 }
 
