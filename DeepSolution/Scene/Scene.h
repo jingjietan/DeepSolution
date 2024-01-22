@@ -28,6 +28,8 @@ struct Submesh
 
 	VkPipeline pipeline;
 	int colorId;
+	int normalId;
+	int mroId;
 
 	bool transparent;
 };
@@ -53,12 +55,15 @@ struct GlobalUniform
 {
 	glm::mat4 view;
 	glm::mat4 projection;
+	glm::vec3 viewPos;
 };
 
 struct PushConstant
 {
 	glm::mat4 model;
 	int colorId;
+	int normalId;
+	int mroId;
 };
 
 class Scene

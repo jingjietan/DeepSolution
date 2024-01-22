@@ -593,12 +593,36 @@ void Scene::loadGLTF(const std::string& path)
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
 		VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
+	// Gather hints
+	std::unordered_map<int, FormatUsageHint> hints{};
+	auto insertHint = [&](int valid, FormatUsageHint hint) {
+		if (valid == -1)
+		{
+			return;
+		}
+		hints[valid] = hint;
+	};
+	auto getHint = [&](int id) {
+		if (auto it = hints.find(id); it != hints.end())
+		{
+			return it->second;
+		}
+		return FormatUsageHint::NO_HINT;
+	};
+	for (const auto& material : model.materials)
+	{
+		insertHint(material.pbrMetallicRoughness.baseColorTexture.index, FormatUsageHint::SRGB);
+		insertHint(material.normalTexture.index, FormatUsageHint::UNORM);
+		insertHint(material.pbrMetallicRoughness.metallicRoughnessTexture.index, FormatUsageHint::UNORM);
+	}
+
 	// Load textures
 	std::vector<VkDescriptorImageInfo> descImageInfos{};
 	const uint32_t startingElement = textures.size();
 
-	for (const auto& texture : model.textures)
+	for (size_t i = 0; i < model.textures.size(); i++)
 	{
+		const auto& texture = model.textures[i];
 		static tinygltf::Sampler defSampler;
 		const auto& sampler = texture.sampler != -1 ? model.samplers[texture.sampler] : defSampler;
 		const auto& image = model.images[texture.source];
@@ -612,7 +636,7 @@ void Scene::loadGLTF(const std::string& path)
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 		imageInfo.mipLevels = 1;
-		imageInfo.format = getVkFormat(image.component, image.bits, FormatUsageHint::SRGB);
+		imageInfo.format = getVkFormat(image.component, image.bits, getHint(i));
 		imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 		auto ptr = std::make_unique<Image>(device_, imageInfo);
@@ -824,7 +848,7 @@ void Scene::loadGLTF(const std::string& path)
 					StaticVertex vertex{};
 					vertex.position = position.ptr ? glm::make_vec3(&position.ptr[position.stride * i]) : glm::vec3();
 					vertex.normal = normal.ptr ? glm::make_vec3(&normal.ptr[normal.stride * i]) : glm::vec3();
-					vertex.tangent = tangent.ptr ? glm::make_vec4(&tangent.ptr[tangent.stride * i]) : glm::vec4();
+					vertex.tangent = tangent.ptr ? glm::make_vec4(&tangent.ptr[tangent.stride * i]) : glm::vec4(1.0f);
 					vertex.uv = uv.ptr ? glm::make_vec2(&uv.ptr[uv.stride * i]) : glm::vec2();
 					vertices.push_back(vertex);
 				}
@@ -855,6 +879,8 @@ void Scene::loadGLTF(const std::string& path)
 				const auto indexCount = static_cast<uint32_t>(indices.size());
 
 				const auto colorId = material.pbrMetallicRoughness.baseColorTexture.index;
+				const auto normalId = material.normalTexture.index;
+				const auto mroId = material.pbrMetallicRoughness.metallicRoughnessTexture.index;
 				
 				const auto transparent = false; //material.alphaMode == "BLEND";
 				
@@ -873,6 +899,8 @@ void Scene::loadGLTF(const std::string& path)
 					
 					.pipeline = pipeline,
 					.colorId = colorId,
+					.normalId = normalId,
+					.mroId = mroId,
 					.transparent = transparent
 				});
 				
@@ -908,6 +936,14 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 	if (compositeWidth != camera.viewportWidth || compositeHeight != camera.viewportHeight)
 	{
 		recreateAccumReveal(camera.viewportWidth, camera.viewportHeight);
+	}
+
+	{ // Global UBO
+		GlobalUniform uniform{};
+		uniform.projection = camera.calculateProjection();
+		uniform.view = camera.calculateView();
+		uniform.viewPos = camera.position;
+		globalUniformBuffers_[frameCount_]->upload(&uniform, sizeof(uniform));
 	}
 
 	// Group stuff
@@ -1012,13 +1048,6 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &globalSets_[frameCount_], 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 1, 1, &bindlessSet_, 0, nullptr);
 
-		{
-			GlobalUniform uniform{};
-			uniform.projection = camera.calculateProjection();
-			uniform.view = camera.calculateView();
-			globalUniformBuffers_[frameCount_]->upload(&uniform, sizeof(uniform));
-		}
-
 		VkDebugUtilsLabelEXT label{};
 		label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 		label.pLabelName = "Opaque";
@@ -1031,6 +1060,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 			for (const auto& submesh : opaque.meshes)
 			{
 				push.colorId = submesh.colorId;
+				push.normalId = submesh.normalId;
+				push.mroId = submesh.mroId;
 				vkCmdPushConstants(commandBuffer, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 
 				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, submesh.pipeline);
