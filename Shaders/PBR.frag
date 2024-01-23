@@ -16,6 +16,7 @@ layout(set = 1, binding = 1) uniform sampler2D textures[];
 layout( push_constant ) uniform PushConstants
 {
 	mat4 model;
+	vec2 unknown;
     int colorId;
     int normalId;
     int mruId;

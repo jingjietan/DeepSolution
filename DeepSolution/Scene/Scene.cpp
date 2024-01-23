@@ -259,30 +259,6 @@ Scene::Scene(Device& device) : device_(device)
 {
 	maxFramesInFlight = device.getMaxFramesInFlight();
 
-	constexpr size_t vertexBufferSize = 1024ull * 1024ull * 1024ull; // 1gb.
-	constexpr size_t indexBufferSize = 256ull * 1024ull * 1024ull; // 256mb;
-
-	VmaVirtualBlockCreateInfo blockCI{};
-	blockCI.size = vertexBufferSize;
-
-	vmaCreateVirtualBlock(&blockCI, &virtualVertex_);
-	check(virtualVertex_);
-
-	blockCI.size = indexBufferSize;
-	vmaCreateVirtualBlock(&blockCI, &virtualIndices_);
-	check(virtualIndices_);
-
-	vertexBuffer = std::make_unique<Buffer>(device_, vertexBufferSize,
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-		//VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-	indexBuffer = std::make_unique<Buffer>(device_, vertexBufferSize,
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-		// VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-
 	vertexShader_ = loadShader(device.device, "Shaders/PBR.vert.spv");
 	fragmentShader_ = loadShader(device.device, "Shaders/PBR.frag.spv");
 
@@ -692,9 +668,9 @@ void Scene::loadGLTF(const std::string& path)
 			CreateInfo::ShaderStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader_)
 		};
 
-		auto vertexBinding = StaticVertex::BindingDescription();
-		auto vertexAttributes = StaticVertex::AttributesDescription();
-		auto vertexInputState = CreateInfo::VertexInputState(&vertexBinding, 1, vertexAttributes.data(), vertexAttributes.size());
+		//auto vertexBinding = StaticVertex::BindingDescription();
+		//auto vertexAttributes = StaticVertex::AttributesDescription();
+		auto vertexInputState = CreateInfo::VertexInputState(nullptr, 0, nullptr, 0);
 
 		auto inputAssemblyState = CreateInfo::InputAssemblyState(getMode(mode));
 
@@ -860,21 +836,32 @@ void Scene::loadGLTF(const std::string& path)
 				const auto verticesSize = SizeInBytes(vertices);
 				const auto indicesSize = SizeInBytes(indices);
 
-				Allocation vertexAlloc = performAllocation(virtualVertex_, verticesSize);
-				Allocation indicesAlloc = performAllocation(virtualIndices_, indicesSize);
+				//Allocation vertexAlloc = performAllocation(virtualVertex_, verticesSize);
+				//Allocation indicesAlloc = performAllocation(virtualIndices_, indicesSize);
+				std::unique_ptr<Buffer> vertexAlloc = std::make_unique<Buffer>(device_, verticesSize, 
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
+					VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
+				std::unique_ptr<Buffer> indicesAlloc = std::make_unique<Buffer>(device_, indicesSize,
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+					VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
 				stagingBuffer.upload(vertices.data(), verticesSize);
 				CreateInfo::performOneTimeAction(device_.device, device_.transferQueue.queue, device_.transferPool, [&](VkCommandBuffer commandBuffer) {
-					stagingBuffer.copy(*vertexBuffer, commandBuffer, verticesSize, vertexAlloc.offset, 0);
+					// stagingBuffer.copy(*vertexBuffer, commandBuffer, verticesSize, vertexAlloc.offset, 0);
+					stagingBuffer.copy(*vertexAlloc, commandBuffer, verticesSize, 0, 0);
 				});
 
 				stagingBuffer.upload(indices.data(), indicesSize);
 				CreateInfo::performOneTimeAction(device_.device, device_.transferQueue.queue, device_.transferPool, [&](VkCommandBuffer commandBuffer) {
-					stagingBuffer.copy(*indexBuffer, commandBuffer, indicesSize, indicesAlloc.offset, 0);
+					// stagingBuffer.copy(*indexBuffer, commandBuffer, indicesSize, indicesAlloc.offset, 0);
+					stagingBuffer.copy(*indicesAlloc, commandBuffer, indicesSize, 0, 0);
 				});
 
-				const auto firstIndex = static_cast<uint32_t>(indicesAlloc.offset / sizeof(uint32_t));
-				const auto vertexOffset = static_cast<int32_t>(vertexAlloc.offset / sizeof(StaticVertex));
+				const auto firstIndex = 0;
+					// -static_cast<uint32_t>(indicesAlloc.offset / sizeof(uint32_t));
+				const auto vertexOffset = 0;
+					// static_cast<int32_t>(vertexAlloc.offset / sizeof(StaticVertex));
 
 				const auto indexCount = static_cast<uint32_t>(indices.size());
 
@@ -891,12 +878,12 @@ void Scene::loadGLTF(const std::string& path)
 			
 
 				gpuMesh->submeshes.push_back(Submesh{
-					.vertexAlloc = vertexAlloc,
-					.indexAlloc = indicesAlloc,
+					.vertexAlloc = std::move(vertexAlloc),
+					.indexAlloc = std::move(indicesAlloc),
 					.indexCount = indexCount,
 					.firstIndex = firstIndex,
 					.vertexOffset = vertexOffset,
-					
+
 					.pipeline = pipeline,
 					.colorId = colorId,
 					.normalId = normalId,
@@ -950,7 +937,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 	struct RenderComponent
 	{
 		glm::mat4 model;
-		std::vector<Submesh> meshes;
+		std::vector<const Submesh*> meshes;
 	};
 
 	std::vector<RenderComponent> opaqueGroup;
@@ -970,11 +957,11 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 			{
 				if (submesh.transparent)
 				{
-					transparentComponent.meshes.push_back(submesh);
+					transparentComponent.meshes.push_back(&submesh);
 				}
 				else
 				{
-					opaqueComponent.meshes.push_back(submesh);
+					opaqueComponent.meshes.push_back(&submesh);
 				}
 			}
 
@@ -1043,8 +1030,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 		size_t offset = 0;
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer->operator const VkBuffer& (), &offset);
-		vkCmdBindIndexBuffer(commandBuffer, indexBuffer->operator const VkBuffer& (), 0, VK_INDEX_TYPE_UINT32);
+		//vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer->operator const VkBuffer& (), &offset);
+		//vkCmdBindIndexBuffer(commandBuffer, indexBuffer->operator const VkBuffer& (), 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &globalSets_[frameCount_], 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 1, 1, &bindlessSet_, 0, nullptr);
 
@@ -1052,20 +1039,23 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 		label.pLabelName = "Opaque";
 		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
-		
+
 		for (const auto& opaque : opaqueGroup)
 		{
 			PushConstant push{};
 			push.model = opaque.model;
 			for (const auto& submesh : opaque.meshes)
 			{
-				push.colorId = submesh.colorId;
-				push.normalId = submesh.normalId;
-				push.mroId = submesh.mroId;
+				push.vertexBinding = submesh->vertexAlloc->getAddress();
+				push.colorId = submesh->colorId;
+				push.normalId = submesh->normalId;
+				push.mroId = submesh->mroId;
 				vkCmdPushConstants(commandBuffer, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 
-				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, submesh.pipeline);
-				vkCmdDrawIndexed(commandBuffer, submesh.indexCount, 1, submesh.firstIndex, submesh.vertexOffset, 0);
+				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, submesh->pipeline);
+				vkCmdBindIndexBuffer(commandBuffer, submesh->indexAlloc->operator const VkBuffer& (), 0, VK_INDEX_TYPE_UINT32);
+
+				vkCmdDrawIndexed(commandBuffer, submesh->indexCount, 1, 0, 0, 0);	
 			}
 		}
 
@@ -1121,8 +1111,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 		size_t offset = 0;
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer->operator const VkBuffer& (), &offset);
-		vkCmdBindIndexBuffer(commandBuffer, indexBuffer->operator const VkBuffer& (), 0, VK_INDEX_TYPE_UINT32);
+		//vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer->operator const VkBuffer& (), &offset);
+		//vkCmdBindIndexBuffer(commandBuffer, indexBuffer->operator const VkBuffer& (), 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &globalSets_[frameCount_], 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 1, 1, &bindlessSet_, 0, nullptr);
 	
@@ -1137,11 +1127,11 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 			push.model = transparent.model;
 			for (const auto& submesh : transparent.meshes)
 			{
-				push.colorId = submesh.colorId;
+				push.colorId = submesh->colorId;
 				vkCmdPushConstants(commandBuffer, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 
-				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, submesh.pipeline);
-				vkCmdDrawIndexed(commandBuffer, submesh.indexCount, 1, submesh.firstIndex, submesh.vertexOffset, 0);
+				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, submesh->pipeline);
+				vkCmdDrawIndexed(commandBuffer, submesh->indexCount, 1, submesh->firstIndex, submesh->vertexOffset, 0);
 			}
 		}
 		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
@@ -1225,8 +1215,8 @@ Scene::~Scene()
 			for (const auto& submesh : node->mesh->submeshes)
 			{
 				// SPDLOG_INFO("Allocation at offset V: {} I: {} with something like vkCmdDrawIndexed(c, {}, 1, {}, {}, 0)", submesh.vertexAlloc.offset, submesh.indexAlloc.offset, submesh.indexCount, submesh.firstIndex, submesh.vertexOffset);
-				vmaVirtualFree(virtualVertex_, submesh.vertexAlloc.allocation);
-				vmaVirtualFree(virtualIndices_, submesh.indexAlloc.allocation);
+				//vmaVirtualFree(virtualVertex_, submesh.vertexAlloc.allocation);
+				//vmaVirtualFree(virtualIndices_, submesh.indexAlloc.allocation);
 
 				vkDestroyPipeline(device_.device, submesh.pipeline, nullptr);
 			}
@@ -1259,12 +1249,6 @@ Scene::~Scene()
 	vkDestroyPipelineLayout(device_.device, compositingPipelineLayout, nullptr);
 	vkDestroyDescriptorSetLayout(device_.device, compositingSetLayout, nullptr);
 	vkDestroyDescriptorPool(device_.device, compositingPool, nullptr);
-
-	vmaDestroyVirtualBlock(virtualVertex_);
-	vmaDestroyVirtualBlock(virtualIndices_);
-
-	vertexBuffer.reset();
-	indexBuffer.reset();
 }
 
 void Scene::recreateAccumReveal(int width, int height)
@@ -1366,19 +1350,6 @@ void Scene::cleanupRecycling()
 	std::erase_if(recycling, [](auto& pair) {
 		return pair.second <= 0;
 	});
-}
-
-Allocation Scene::performAllocation(VmaVirtualBlock block, VkDeviceSize size)
-{
-	Allocation allocation{};
-	VmaVirtualAllocationCreateInfo allocationCI{};
-	allocationCI.size = size;
-	auto res = vmaVirtualAllocate(block, &allocationCI, &allocation.allocation, &allocation.offset);
-	if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
-	{
-		SPDLOG_WARN("Allocation failed!");
-	}
-	return allocation;
 }
 
 void Scene::initialiseDefaultTextures()

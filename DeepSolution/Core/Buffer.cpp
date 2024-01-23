@@ -55,6 +55,14 @@ void Buffer::copy(const Buffer& destBuffer, VkCommandBuffer commandBuffer, size_
 	vkCmdCopyBuffer2(commandBuffer, &copyBufferInfo);
 }
 
+VkDeviceAddress Buffer::getAddress() const
+{
+	VkBufferDeviceAddressInfo bufferAddressInfo{};
+	bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+	bufferAddressInfo.buffer = buffer_;
+	return vkGetBufferDeviceAddress(device_.device, &bufferAddressInfo);
+}
+
 Buffer::~Buffer()
 {
 	vmaDestroyBuffer(device_.allocator, buffer_, allocation_);
