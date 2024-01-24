@@ -58,8 +58,15 @@ void Device::init(void* window)
 	check(glfwCreateWindowSurface(instance, glfwWindow, nullptr, &surface) == VK_SUCCESS, "Failed to create window surface.");
 
 	{
+		VkPhysicalDeviceScalarBlockLayoutFeatures scalar{};
+		scalar.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
+		VkPhysicalDeviceVulkan11Features vulkan11feature{};
+		vulkan11feature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+		vulkan11feature.shaderDrawParameters = VK_TRUE;
+		vulkan11feature.pNext = &scalar;
 		VkPhysicalDeviceSynchronization2Features synchronization{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES };
 		synchronization.synchronization2 = VK_TRUE;
+		synchronization.pNext = &vulkan11feature;
 		VkPhysicalDeviceDynamicRenderingFeatures dynamicRendering{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES };
 		dynamicRendering.dynamicRendering = VK_TRUE;
 		dynamicRendering.pNext = &synchronization;
@@ -77,6 +84,7 @@ void Device::init(void* window)
 		VkPhysicalDeviceFeatures features{};
 		features.samplerAnisotropy = VK_TRUE;
 		features.independentBlend = VK_TRUE;
+		features.multiDrawIndirect = VK_TRUE;
 
 		vkb::PhysicalDeviceSelector physicalDeviceSelector{ temporaryInstance };
 		auto physicalDeviceSelectorResult = physicalDeviceSelector

@@ -1,25 +1,21 @@
-#version 450
+#version 460
 
 #extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_EXT_scalar_block_layout: require
 
 layout(location = 0) in vec3 fragPos;
 layout(location = 1) in vec2 fragTexCoord;
 layout(location = 2) in vec3 fragNormal;
 layout(location = 3) in vec4 fragTangent;
+layout(location = 4) flat in int fragColorId;
+layout(location = 5) flat in int fragNormalId;
+layout(location = 6) flat in int fragMRUId;
 layout(location = 7) in vec3 viewPos;
 
 layout(location = 0) out vec4 outColor;
 
 layout(set = 1, binding = 0) uniform sampler2D defaultTextures[4];
 layout(set = 1, binding = 1) uniform sampler2D textures[];
-
-layout( push_constant ) uniform PushConstants
-{
-	mat4 model;
-    int colorId;
-    int normalId;
-    int mruId;
-} constants;
 
 const float PI = 3.14159265359;
 
@@ -44,22 +40,22 @@ vec3 calculatePointLight(Light light, vec3 fragPos, vec3 viewPos, vec3 V, vec3 N
 
 void main() {
     vec4 color;
-    if (constants.colorId != -1) {
-        color = texture(textures[constants.colorId], fragTexCoord);
+    if (fragColorId != -1) {
+        color = texture(textures[fragColorId], fragTexCoord);
     } else {
         color = vec4(1, 1, 1, 1);
     }
 
     vec4 normal;
-    if (constants.normalId != -1) {
-        normal = texture(textures[constants.normalId], fragTexCoord);
+    if (fragNormalId != -1) {
+        normal = texture(textures[fragNormalId], fragTexCoord);
     } else {
         normal = vec4(0, 1, 0, 0);
     }
 
     vec4 mru;
-    if (constants.mruId != -1) {
-        mru = texture(textures[constants.mruId], fragTexCoord);
+    if (fragMRUId != -1) {
+        mru = texture(textures[fragMRUId], fragTexCoord);
     } else {
         mru = vec4(0, 0, 0, 0);
     }

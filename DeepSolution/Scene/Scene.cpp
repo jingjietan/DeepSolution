@@ -261,6 +261,8 @@ Scene::Scene(Device& device) : device_(device)
 
 	constexpr size_t vertexBufferSize = 1024ull * 1024ull * 1024ull; // 1gb.
 	constexpr size_t indexBufferSize = 256ull * 1024ull * 1024ull; // 256mb;
+	constexpr size_t indirectBufferSize = 2048ull * sizeof(VkDrawIndexedIndirectCommand);
+	constexpr size_t meshDrawDataBufferSize = 2048ull * sizeof(IndirectDrawParam);
 
 	VmaVirtualBlockCreateInfo blockCI{};
 	blockCI.size = vertexBufferSize;
@@ -277,11 +279,22 @@ Scene::Scene(Device& device) : device_(device)
 		//VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-	indexBuffer = std::make_unique<Buffer>(device_, vertexBufferSize,
+	indexBuffer = std::make_unique<Buffer>(device_, indexBufferSize,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
 		// VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+
+	indirectBuffer = std::make_unique<Buffer>(device_, indirectBufferSize,
+		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
+	perMeshDrawDataBuffer.resize(maxFramesInFlight);
+	for (size_t i = 0; i < maxFramesInFlight; i++)
+	{
+		perMeshDrawDataBuffer[i] = std::make_unique<Buffer>(device_, meshDrawDataBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+			VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+	}
+	
 
 	vertexShader_ = loadShader(device.device, "Shaders/PBR.vert.spv");
 	fragmentShader_ = loadShader(device.device, "Shaders/PBR.frag.spv");
@@ -350,6 +363,7 @@ Scene::Scene(Device& device) : device_(device)
 		auto depthStencilState = CreateInfo::DepthStencilState();
 		depthStencilState.depthWriteEnable = VK_FALSE;
 
+		
 		VkPipelineColorBlendAttachmentState attachment{};
 		attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 		attachment.blendEnable = VK_TRUE;
@@ -425,10 +439,18 @@ Scene::Scene(Device& device) : device_(device)
 	globalSetBinding0.descriptorCount = 1;
 	globalSetBinding0.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+	VkDescriptorSetLayoutBinding globalSetBinding1{};
+	globalSetBinding1.binding = 1;
+	globalSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	globalSetBinding1.descriptorCount = 1;
+	globalSetBinding1.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	std::array globalSetBindings = { globalSetBinding0, globalSetBinding1 };
+
 	VkDescriptorSetLayoutCreateInfo globalSetLayoutCI{};
 	globalSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	globalSetLayoutCI.bindingCount = 1;
-	globalSetLayoutCI.pBindings = &globalSetBinding0;
+	globalSetLayoutCI.bindingCount = static_cast<uint32_t>(globalSetBindings.size());
+	globalSetLayoutCI.pBindings = globalSetBindings.data();
 	check(vkCreateDescriptorSetLayout(device.device, &globalSetLayoutCI, nullptr, &globalSetLayout));
 
 	// Bindless Set (Global)
@@ -554,15 +576,31 @@ Scene::Scene(Device& device) : device_(device)
 		bufferInfo.buffer = globalUniformBuffers_[i]->operator const VkBuffer & ();
 		bufferInfo.range = VK_WHOLE_SIZE;
 
-		VkWriteDescriptorSet writeSet{};
-		writeSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		writeSet.descriptorCount = 1;
-		writeSet.dstArrayElement = 0;
-		writeSet.dstBinding = 0;
-		writeSet.dstSet = globalSets_[i];
-		writeSet.pBufferInfo = &bufferInfo;
-		vkUpdateDescriptorSets(device.device, 1, &writeSet, 0, nullptr);
+		VkDescriptorBufferInfo perDrawbufferInfo{};
+		perDrawbufferInfo.buffer = perMeshDrawDataBuffer[i]->operator const VkBuffer & ();
+		perDrawbufferInfo.range = VK_WHOLE_SIZE;
+
+
+		VkWriteDescriptorSet writeSetBinding0{};
+		writeSetBinding0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeSetBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writeSetBinding0.descriptorCount = 1;
+		writeSetBinding0.dstArrayElement = 0;
+		writeSetBinding0.dstBinding = 0;
+		writeSetBinding0.dstSet = globalSets_[i];
+		writeSetBinding0.pBufferInfo = &bufferInfo;
+
+		VkWriteDescriptorSet writeSetBinding1{};
+		writeSetBinding1.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeSetBinding1.descriptorCount = 1;
+		writeSetBinding1.dstArrayElement = 0;
+		writeSetBinding1.dstBinding = 1;
+		writeSetBinding1.dstSet = globalSets_[i];
+		writeSetBinding1.pBufferInfo = &perDrawbufferInfo;
+
+		std::array writes = { writeSetBinding0, writeSetBinding1 };
+		vkUpdateDescriptorSets(device.device, 2, writes.data(), 0, nullptr);
 	}
 }
 
@@ -999,6 +1037,31 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		group(group, node, glm::mat4(1.0f));
 	}
 
+	std::vector<IndirectDrawParam> indirectParams;
+	std::vector<VkDrawIndexedIndirectCommand> commands;
+	for (const auto& item : opaqueGroup)
+	{
+		for (const auto& mesh : item.meshes)
+		{
+			IndirectDrawParam param{};
+			param.model = item.model;
+			param.colorId = mesh.colorId;
+			param.normalId = mesh.normalId;
+			param.mroId = mesh.mroId;
+			indirectParams.push_back(param);
+
+			VkDrawIndexedIndirectCommand command{};
+			command.firstIndex = mesh.firstIndex;
+			command.firstInstance = 0;
+			command.indexCount = mesh.indexCount;
+			command.instanceCount = 1;
+			command.vertexOffset = mesh.vertexOffset;
+			commands.push_back(command);
+		}
+	}
+
+	indirectBuffer->upload(commands.data(), commands.size() * sizeof(VkDrawIndexedIndirectCommand));
+	perMeshDrawDataBuffer[frameCount_]->upload(indirectParams.data(), indirectParams.size() * sizeof(IndirectDrawParam));
 
 	// Begin Rendering (Opaque)
 	{
@@ -1052,7 +1115,10 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 		label.pLabelName = "Opaque";
 		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
-		
+
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, opaqueGroup[0].meshes[0].pipeline);
+		vkCmdDrawIndexedIndirect(commandBuffer, indirectBuffer->operator const VkBuffer& (), 0, commands.size(), sizeof(VkDrawIndexedIndirectCommand));
+		/*
 		for (const auto& opaque : opaqueGroup)
 		{
 			PushConstant push{};
@@ -1068,6 +1134,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 				vkCmdDrawIndexed(commandBuffer, submesh.indexCount, 1, submesh.firstIndex, submesh.vertexOffset, 0);
 			}
 		}
+		*/
 
 		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 

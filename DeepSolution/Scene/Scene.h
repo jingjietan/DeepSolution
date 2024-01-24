@@ -66,6 +66,14 @@ struct PushConstant
 	int mroId;
 };
 
+struct IndirectDrawParam
+{
+	glm::mat4 model;
+	int colorId;
+	int normalId;
+	int mroId;
+};
+
 class Scene
 {
 public:
@@ -83,6 +91,7 @@ private:
 
 	std::unique_ptr<Buffer> vertexBuffer{};
 	std::unique_ptr<Buffer> indexBuffer{};
+	std::unique_ptr<Buffer> indirectBuffer{};
 	std::vector<std::unique_ptr<Image>> textures{};
 
 	std::vector<std::unique_ptr<Node>> nodes{};
@@ -112,6 +121,7 @@ private:
 	std::unique_ptr<Image> defaultTextures[4];
 	void initialiseDefaultTextures();
 
+	std::vector<std::unique_ptr<Buffer>> perMeshDrawDataBuffer;
 	VkDescriptorPool globalPool_{};
 	VkDescriptorSetLayout globalSetLayout{};
 
