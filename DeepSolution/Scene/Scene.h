@@ -7,16 +7,21 @@
 #include <glm/gtc/quaternion.hpp>
 #include "../Camera.h"
 #include "../Core/Image.h" // todo: cannot forward declare image?
-#include "../Core/Buffer.h"
 
 class Device;
 class Buffer;
 class Image;
 
+struct Allocation
+{
+	VmaVirtualAllocation allocation;
+	VkDeviceSize offset;
+};
+
 struct Submesh
 {
-	std::unique_ptr<Buffer> vertexAlloc{};
-	std::unique_ptr<Buffer> indexAlloc{};
+	Allocation vertexAlloc;
+	Allocation indexAlloc;
 	uint32_t indexCount;
 	uint32_t firstIndex;
 	int32_t vertexOffset;
@@ -56,7 +61,6 @@ struct GlobalUniform
 struct PushConstant
 {
 	glm::mat4 model;
-	VkDeviceSize vertexBinding;
 	int colorId;
 	int normalId;
 	int mroId;
@@ -74,7 +78,11 @@ public:
 	~Scene();
 private:
 	Device& device_;
+	VmaVirtualBlock virtualVertex_{}; // used for managing big buffers.
+	VmaVirtualBlock virtualIndices_{};
 
+	std::unique_ptr<Buffer> vertexBuffer{};
+	std::unique_ptr<Buffer> indexBuffer{};
 	std::vector<std::unique_ptr<Image>> textures{};
 
 	std::vector<std::unique_ptr<Node>> nodes{};
@@ -115,6 +123,8 @@ private:
 	std::vector<std::unique_ptr<Buffer>> globalUniformBuffers_;
 	std::vector<VkDescriptorSet> globalSets_;
 	VkDescriptorSet bindlessSet_{};
+
+	static Allocation performAllocation(VmaVirtualBlock block, VkDeviceSize size);
 
 	uint32_t frameCount_{};
 	uint32_t maxFramesInFlight;

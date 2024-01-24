@@ -73,10 +73,6 @@ void Device::init(void* window)
 		descriptorIndexing.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 		descriptorIndexing.descriptorBindingVariableDescriptorCount = VK_TRUE;
 		descriptorIndexing.pNext = &bufferDeviceAddress;
-		VkPhysicalDeviceScalarBlockLayoutFeatures scalarLayout{};
-		scalarLayout.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
-		scalarLayout.scalarBlockLayout = VK_TRUE;
-		scalarLayout.pNext = &descriptorIndexing;
 
 		VkPhysicalDeviceFeatures features{};
 		features.samplerAnisotropy = VK_TRUE;
@@ -85,13 +81,13 @@ void Device::init(void* window)
 		vkb::PhysicalDeviceSelector physicalDeviceSelector{ temporaryInstance };
 		auto physicalDeviceSelectorResult = physicalDeviceSelector
 			.set_surface(surface)
-			.add_required_extension_features(scalarLayout)
+			.add_required_extension_features(descriptorIndexing)
 			.add_required_extensions({
 				VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
 				VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
 				VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
 				VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
-			})
+				})
 			.set_required_features(features)
 			.select();
 

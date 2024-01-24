@@ -18,8 +18,6 @@ public:
 
 	void copy(const Buffer& destBuffer, VkCommandBuffer commandBuffer, size_t size, size_t destOffset, size_t srcOffset) const;
 
-	VkDeviceAddress getAddress() const;
-
 	operator const VkBuffer &() const
 	{
 		return buffer_;

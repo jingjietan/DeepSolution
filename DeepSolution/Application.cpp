@@ -64,7 +64,7 @@ Application::Application(int width, int height)
 	// scene_->loadGLTF("assets/subway/scene.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/SciFiHelmet/glTF/SciFiHelmet.gltf");
-	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/ABeautifulGame/glTF/ABeautifulGame.gltf");
+	scene_->loadGLTF("assets/glTF-Sample-Assets/Models/ABeautifulGame/glTF/ABeautifulGame.gltf");
 }
 
 void Application::run()
