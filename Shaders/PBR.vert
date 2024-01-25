@@ -2,19 +2,13 @@
 
 #extension GL_EXT_scalar_block_layout: require
 
-layout(set = 0, binding = 0) uniform GlobalUniform {
+#include "Common.glsl"
+
+layout(GLOBAL_UNIFORM_BINDING) uniform GlobalUniform {
     mat4 view;
     mat4 projection;
 	vec3 viewPos;
 } ubo;
-
-struct DrawData 
-{
-	mat4 model;
-    int colorId;
-	int normalId;
-    int mruId;
-};
 
 layout(scalar, set = 0, binding = 1) buffer PerMeshDraw {
     DrawData drawDatas[];

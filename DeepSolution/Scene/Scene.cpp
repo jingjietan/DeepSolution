@@ -491,6 +491,9 @@ Scene::Scene(Device& device) : device_(device)
 	check(vkCreateDescriptorSetLayout(device.device, &bindlessSetLayoutCI, nullptr, &bindlessSetLayout));
 	setName(device_, bindlessSetLayout, "Bindless Set Layout");
 
+	// Infinite Grid
+	infiniteGrid_ = std::make_unique<InfiniteGrid>(device_, globalSetLayout);
+
 	// Model Push Constant
 	VkPushConstantRange pushRange{};
 	pushRange.size = sizeof(PushConstant);
@@ -1242,9 +1245,9 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
 
 		VkViewport viewport{};
-		// viewport.x = 0.0f;
 		viewport.width = camera.viewportWidth;
 		viewport.height = camera.viewportHeight;
+		// viewport.x = 0.0f;
 		//viewport.y = camera.viewportHeight;
 		//viewport.width = camera.viewportWidth;
 		//viewport.height = -camera.viewportHeight;
@@ -1269,6 +1272,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 
 		vkCmdEndRendering(commandBuffer);
 	}
+
+	infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, { uint32_t(camera.viewportWidth), uint32_t(camera.viewportHeight) });
 
 	Transition::ShaderReadOptimalToColorAttachment(accum->Get(), commandBuffer);
 	Transition::ShaderReadOptimalToColorAttachment(reveal->Get(), commandBuffer);

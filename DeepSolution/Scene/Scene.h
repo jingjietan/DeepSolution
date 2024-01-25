@@ -7,6 +7,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include "../Camera.h"
 #include "../Core/Image.h" // todo: cannot forward declare image?
+#include "../Render/InfiniteGrid.h"
 
 class Device;
 class Buffer;
@@ -138,4 +139,6 @@ private:
 
 	uint32_t frameCount_{};
 	uint32_t maxFramesInFlight;
+	//
+	std::unique_ptr<InfiniteGrid> infiniteGrid_;
 };

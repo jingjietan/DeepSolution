@@ -27,19 +27,20 @@ void Camera::updateViewport(float width, float height)
 
 void Camera::movePosition(Direction direction, float deltaTime)
 {
+	constexpr float movementSpeed = 5.f;
 	switch (direction)
 	{
 	case Direction::Forward:
-		position += front * deltaTime;
+		position += front * movementSpeed * deltaTime;
 		break;
 	case Direction::Backward:
-		position -= front * deltaTime;
+		position -= front * movementSpeed * deltaTime;
 		break;
 	case Direction::Left:
-		position -= right * deltaTime;
+		position -= right * movementSpeed * deltaTime;
 		break;
 	case Direction::Right:
-		position += right * deltaTime;
+		position += right * movementSpeed * deltaTime;
 		break;
 	default:
 		break;

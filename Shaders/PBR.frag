@@ -3,6 +3,8 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_EXT_scalar_block_layout: require
 
+#include "Common.glsl"
+
 layout(location = 0) in vec3 fragPos;
 layout(location = 1) in vec2 fragTexCoord;
 layout(location = 2) in vec3 fragNormal;
@@ -16,18 +18,6 @@ layout(location = 0) out vec4 outColor;
 
 layout(set = 1, binding = 0) uniform sampler2D defaultTextures[4];
 layout(set = 1, binding = 1) uniform sampler2D textures[];
-
-const float PI = 3.14159265359;
-
-struct Light {
-	vec3 position;
-};
-
-struct Material {
-	vec4 color;
-	float roughness;
-	float metallic;
-};
 
 // Convenience
 mat3 constructTBN(vec3 normal, vec4 tangent);
@@ -50,7 +40,7 @@ void main() {
     if (fragNormalId != -1) {
         normal = texture(textures[fragNormalId], fragTexCoord);
     } else {
-        normal = vec4(0, 1, 0, 0);
+        normal = vec4(0.5, 0.5, 1, 0);
     }
 
     vec4 mru;
