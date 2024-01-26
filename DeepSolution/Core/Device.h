@@ -33,6 +33,7 @@ public:
 	VkCommandPool transferPool{};
 	Queue transferQueue{};
 
+	VkPhysicalDeviceProperties deviceProperties{};
 	VkPhysicalDeviceDescriptorIndexingProperties indexingProperties{};
 
 	uint32_t getMaxFramesInFlight() const;

@@ -63,6 +63,11 @@ InfiniteGrid::InfiniteGrid(Device& device, VkDescriptorSetLayout globalUniformLa
 
 void InfiniteGrid::draw(VkCommandBuffer commandBuffer, VkDescriptorSet globalSet, VkImageView color, VkImageView depth, VkExtent2D extent)
 {
+	VkDebugUtilsLabelEXT label{};
+	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+	label.pLabelName = "Infinite Grid";
+	vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
+
 	VkRenderingAttachmentInfo colorAttachment{};
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	colorAttachment.imageView = color;
@@ -88,11 +93,6 @@ void InfiniteGrid::draw(VkCommandBuffer commandBuffer, VkDescriptorSet globalSet
 
 	vkCmdBeginRendering(commandBuffer, &renderInfo);
 
-	VkDebugUtilsLabelEXT label{};
-	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-	label.pLabelName = "Infinite Grid";
-	vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
-	
 	VkViewport viewport{};
 	viewport.width = static_cast<float>(extent.width);
 	viewport.height = -static_cast<float>(extent.height);
@@ -112,9 +112,9 @@ void InfiniteGrid::draw(VkCommandBuffer commandBuffer, VkDescriptorSet globalSet
 
 	vkCmdDraw(commandBuffer, 6, 1, 0, 0);
 
-	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
-
 	vkCmdEndRendering(commandBuffer);
+
+	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 }
 
 InfiniteGrid::~InfiniteGrid()

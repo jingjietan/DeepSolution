@@ -667,6 +667,8 @@ void Scene::loadGLTF(const std::string& path)
 		static tinygltf::Sampler defSampler;
 		const auto& sampler = texture.sampler != -1 ? model.samplers[texture.sampler] : defSampler;
 		const auto& image = model.images[texture.source];
+		const auto mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(image.width, image.height)))) + 1;
+		const VkImageSubresourceRange range = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT , .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = 1 };
 
 		VkImageCreateInfo imageInfo{};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -676,12 +678,12 @@ void Scene::loadGLTF(const std::string& path)
 		imageInfo.extent = { uint32_t(image.width), uint32_t(image.height), 1 };
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-		imageInfo.mipLevels = 1;
+		imageInfo.mipLevels = mipLevels;
 		imageInfo.format = getVkFormat(image.component, image.bits, getHint(i));
-		imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 		auto ptr = std::make_unique<Image>(device_, imageInfo);
-		ptr->AttachImageView(VK_IMAGE_ASPECT_COLOR_BIT);
+		ptr->AttachImageView(range);
 
 		VkSamplerCreateInfo samplerInfo{};
 		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -691,6 +693,8 @@ void Scene::loadGLTF(const std::string& path)
 		samplerInfo.minFilter = getVkFilter(sampler.minFilter, VK_FILTER_LINEAR);
 		samplerInfo.magFilter = getVkFilter(sampler.magFilter, VK_FILTER_LINEAR);
 		samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+		samplerInfo.anisotropyEnable = VK_TRUE;
+		samplerInfo.maxAnisotropy = device_.deviceProperties.limits.maxSamplerAnisotropy;
 		
 		ptr->AttachSampler(samplerInfo);
 
@@ -699,11 +703,11 @@ void Scene::loadGLTF(const std::string& path)
 		stagingBuffer.upload(image.image.data(), imageSize);
 
 		CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
-			Transition::UndefinedToTransferDestination(ptr->Get(), commandBuffer);
+			Transition::UndefinedToTransferDestination(ptr->Get(), commandBuffer, range);
 
 			ptr->Upload(commandBuffer, stagingBuffer.operator const VkBuffer &());
 
-			Transition::TransferDestinationToShaderReadOptimal(ptr->Get(), commandBuffer);
+			Image::generateMipmaps(ptr->Get(), image.width, image.height, mipLevels, commandBuffer);
 		});
 
 		VkDescriptorImageInfo descImageInfo{};
@@ -1068,6 +1072,11 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 
 	// Begin Rendering (Opaque)
 	{
+		VkDebugUtilsLabelEXT label{};
+		label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+		label.pLabelName = "Opaque";
+		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
+
 		VkRenderingAttachmentInfo colorAttachment{};
 		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 		colorAttachment.imageView = colorView;
@@ -1114,35 +1123,15 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &globalSets_[frameCount_], 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 1, 1, &bindlessSet_, 0, nullptr);
 
-		VkDebugUtilsLabelEXT label{};
-		label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-		label.pLabelName = "Opaque";
-		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
-
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, opaqueGroup[0].meshes[0].pipeline);
 		vkCmdDrawIndexedIndirect(commandBuffer, indirectBuffer->operator const VkBuffer& (), 0, commands.size(), sizeof(VkDrawIndexedIndirectCommand));
-		/*
-		for (const auto& opaque : opaqueGroup)
-		{
-			PushConstant push{};
-			push.model = opaque.model;
-			for (const auto& submesh : opaque.meshes)
-			{
-				push.colorId = submesh.colorId;
-				push.normalId = submesh.normalId;
-				push.mroId = submesh.mroId;
-				vkCmdPushConstants(commandBuffer, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
-
-				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, submesh.pipeline);
-				vkCmdDrawIndexed(commandBuffer, submesh.indexCount, 1, submesh.firstIndex, submesh.vertexOffset, 0);
-			}
-		}
-		*/
-
-		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
 		vkCmdEndRendering(commandBuffer);
+
+		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 	}
+
+	/* Transparent is WIP
 
 	{ // Render Pass (Transparent)
 		std::array<VkRenderingAttachmentInfo, 2> attachments{};
@@ -1273,11 +1262,14 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		vkCmdEndRendering(commandBuffer);
 	}
 
+	*/
+
 	infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, { uint32_t(camera.viewportWidth), uint32_t(camera.viewportHeight) });
 
+	/*
 	Transition::ShaderReadOptimalToColorAttachment(accum->Get(), commandBuffer);
 	Transition::ShaderReadOptimalToColorAttachment(reveal->Get(), commandBuffer);
-
+	*/
 
 	frameCount_ = (frameCount_ + 1) % maxFramesInFlight;
 
@@ -1455,6 +1447,7 @@ Allocation Scene::performAllocation(VmaVirtualBlock block, VkDeviceSize size)
 
 void Scene::initialiseDefaultTextures()
 {
+	/*
 	std::array<uint8_t, 4> colorData_{ 0xff,0xff,0xff,0xff };
 	auto commandBuffer = CreateInfo::allocateCommandBuffer(device_.device, device_.graphicsPool);
 
@@ -1523,6 +1516,7 @@ void Scene::initialiseDefaultTextures()
 	writeSet.dstSet = bindlessSet_;
 
 	vkUpdateDescriptorSets(device_.device, 1, &writeSet, 0, nullptr);
+	*/
 }
 
 glm::mat4 Node::getMatrix() const

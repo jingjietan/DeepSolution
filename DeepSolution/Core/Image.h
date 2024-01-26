@@ -13,12 +13,15 @@ public:
 	Image(Device& device, const VkImageCreateInfo& imageInfo);
 
 	void AttachImageView(VkImageAspectFlags flags);
+	void AttachImageView(const VkImageSubresourceRange& range);
 	void AttachSampler(const VkSamplerCreateInfo& samplerCI);
 	void Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const;
 
 	VkImage Get() const;
 	VkImageView GetView() const;
 	VkSampler GetSampler() const;
+
+	static void generateMipmaps(VkImage image, int width, int height, uint32_t mipLevels, VkCommandBuffer commandBuffer);
 
 	~Image();
 private:

@@ -199,6 +199,8 @@ void Device::init(void* window)
 	properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
 	vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
 
+	deviceProperties = properties.properties;
+
 	graphicsPool = CreateInfo::createCommandPool(device, graphicsQueue.family);
 	transferPool = CreateInfo::createCommandPool(device, transferQueue.family);
 }
