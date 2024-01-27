@@ -1000,6 +1000,62 @@ void Scene::loadGLTF(const std::string& path)
 
 }
 
+std::unique_ptr<Image>  Scene::loadCubeMap(const std::string& path)
+{
+	int x, y, nr;
+	auto data = stbi_loadf(path.c_str(), &x, &y, &nr, 4);
+	check(data);
+
+	const auto mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(x, y)))) + 1;
+	const VkImageSubresourceRange range = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT , .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = 1 };
+
+	VkImageCreateInfo imageCI{};
+	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCI.imageType = VK_IMAGE_TYPE_2D;
+	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageCI.arrayLayers = 1;
+	imageCI.extent = { uint32_t(x), uint32_t(y), 1 };
+	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCI.mipLevels = mipLevels;
+	imageCI.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+	auto img = std::make_unique<Image>(device_, imageCI);
+
+	img->AttachImageView(range);
+
+	VkSamplerCreateInfo samplerInfo{};
+	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.minFilter = VK_FILTER_LINEAR;
+	samplerInfo.magFilter = VK_FILTER_LINEAR;
+	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+	samplerInfo.anisotropyEnable = VK_TRUE;
+	samplerInfo.maxAnisotropy = device_.deviceProperties.limits.maxSamplerAnisotropy;
+
+	img->AttachSampler(samplerInfo);
+
+	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint16_t);
+	Buffer stagingBuffer(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+	stagingBuffer.upload(data, imageSize);
+
+	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
+		Transition::UndefinedToTransferDestination(img->Get(), commandBuffer, range);
+
+		img->Upload(commandBuffer, stagingBuffer.operator const VkBuffer & ());
+
+		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
+		});
+
+	setName(device_, img->Get(), path);
+
+	return img;
+}
+
+/*
 Handle Scene::loadTexture(const std::string& path)
 {
 	int x, y, nr;
@@ -1041,26 +1097,25 @@ Handle Scene::loadTexture(const std::string& path)
 
 	img->AttachSampler(samplerInfo);
 
-	auto action = CreateInfo::performAsyncAction<std::unique_ptr<Buffer>>(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
-		size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint16_t);
-		auto stagingBuffer = std::make_unique<Buffer>(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-		stagingBuffer->upload(data, imageSize);
-		
+	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint16_t);
+	Buffer stagingBuffer (device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+	stagingBuffer.upload(data, imageSize);
+
+	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
 		Transition::UndefinedToTransferDestination(img->Get(), commandBuffer, range);
 
-		img->Upload(commandBuffer, stagingBuffer->operator const VkBuffer & ());
+		img->Upload(commandBuffer, stagingBuffer.operator const VkBuffer & ());
 
 		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
-
-		return std::move(stagingBuffer);
 	});
 
 	setName(device_, img->Get(), path);
 
-	asyncTransfers_.push_back(std::move(action));
+	
 	auto hnd = loadedTextures_.add(std::move(img));
 	return hnd;
 }
+*/
 
 void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView colorView, VkImageView depthView)
 {
@@ -1527,14 +1582,6 @@ void Scene::cleanupRecycling()
 	std::erase_if(recycling, [](auto& pair) {
 		return pair.second <= 0;
 	});
-}
-
-void Scene::doCleanup()
-{
-	for (auto& tr : asyncTransfers_)
-	{
-		CreateInfo::cleanupAsync<std::unique_ptr<Buffer>>(device_.device, device_.graphicsPool, maxFramesInFlight, tr);
-	}
 }
 
 VmaVirtualAllocation Scene::performAllocation(VmaVirtualBlock block, VkDeviceSize size, VkDeviceSize& offset)

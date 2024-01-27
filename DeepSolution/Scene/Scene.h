@@ -78,11 +78,11 @@ public:
 
 	void loadGLTF(const std::string& path);
 
-	Handle loadTexture(const std::string& path);
+	std::unique_ptr<Image> loadCubeMap(const std::string& path);
+
+	// Handle loadTexture(const std::string& path);
 
 	void draw(VkCommandBuffer commandBuffer, const State& state, VkImageView colorView, VkImageView depthView);
-
-	void doCleanup();
 
 	~Scene();
 private:
@@ -136,7 +136,7 @@ private:
 	VkDescriptorSetLayout bindlessSetLayout{};
 
 	HandleMap<std::unique_ptr<Image>> loadedTextures_;
-	std::vector<AsyncTransfer<std::unique_ptr<Buffer>>> asyncTransfers_;
+	
 	VkPipelineLayout pipelineLayout_{};
 
 	std::vector<std::unique_ptr<Buffer>> globalUniformBuffers_;

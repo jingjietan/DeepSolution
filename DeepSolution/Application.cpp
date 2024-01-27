@@ -235,8 +235,8 @@ Application::Application(int width, int height)
 
 	scene_ = std::make_unique<Scene>(device_);
 
-	auto cubemap = scene_->loadTexture("assets/rostock_laage_airport_4k.hdr");
-	check(cubemap != Handle::Invalid);
+	auto cubemap = scene_->loadCubeMap("assets/rostock_laage_airport_4k.hdr");
+	check(cubemap.get());
 	
 	// scene_->loadGLTF("assets/subway/scene.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf");
@@ -320,17 +320,11 @@ void Application::run()
 			lightPosition_ = glm::vec3();
 		}
 		
-		if (ImGui::Button("Load texture"))
-		{
-			scene_->loadTexture("assets/rostock_laage_airport_4k.hdr");
-		}
 		ImGui::End();
 
 		imgui_->EndFrame();
 
 		Draw();
-
-		scene_->doCleanup();
 	}
 }
 
