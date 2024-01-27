@@ -14,7 +14,7 @@ public:
 	*/
 	Buffer(Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags flags = 0, VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_AUTO, const std::vector<uint32_t>& indices = {});
 
-	void upload(void const* data, size_t size);
+	void upload(void const* data, size_t size, size_t offset = 0);
 
 	void copy(const Buffer& destBuffer, VkCommandBuffer commandBuffer, size_t size, size_t destOffset, size_t srcOffset) const;
 

@@ -29,11 +29,11 @@ Buffer::Buffer(Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VmaA
 	data_ = allocationInfo.pMappedData;
 }
 
-void Buffer::upload(void const* data, size_t size)
+void Buffer::upload(void const* data, size_t size, size_t offset)
 {
 	check(size <= size_, "Upload called with size larger than capacity");
-	void* mapped = map();
-	memcpy(mapped, data, size);
+	uint8_t* mapped = static_cast<uint8_t*>(map());
+	memcpy(mapped + offset, data, size);
 	unmap();
 }
 

@@ -11,6 +11,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <volk.h>
+#include "../Light.h"
 
 
 namespace {
@@ -263,6 +264,7 @@ Scene::Scene(Device& device) : device_(device)
 	constexpr size_t indexBufferSize = 256ull * 1024ull * 1024ull; // 256mb;
 	constexpr size_t indirectBufferSize = 2048ull * sizeof(VkDrawIndexedIndirectCommand);
 	constexpr size_t meshDrawDataBufferSize = 2048ull * sizeof(IndirectDrawParam);
+	constexpr size_t lightBufferSize = 128ull * sizeof(Light) + sizeof(LightUpload);
 
 	VmaVirtualBlockCreateInfo blockCI{};
 	blockCI.size = vertexBufferSize;
@@ -289,9 +291,14 @@ Scene::Scene(Device& device) : device_(device)
 		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
 	perMeshDrawDataBuffer.resize(maxFramesInFlight);
+	lightBuffer.resize(maxFramesInFlight);
+	
 	for (size_t i = 0; i < maxFramesInFlight; i++)
 	{
 		perMeshDrawDataBuffer[i] = std::make_unique<Buffer>(device_, meshDrawDataBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+			VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
+		lightBuffer[i] = std::make_unique<Buffer>(device_, lightBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
 			VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 	}
 	
@@ -445,7 +452,13 @@ Scene::Scene(Device& device) : device_(device)
 	globalSetBinding1.descriptorCount = 1;
 	globalSetBinding1.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	std::array globalSetBindings = { globalSetBinding0, globalSetBinding1 };
+	VkDescriptorSetLayoutBinding globalSetBinding2{};
+	globalSetBinding2.binding = 2;
+	globalSetBinding2.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	globalSetBinding2.descriptorCount = 1;
+	globalSetBinding2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	std::array globalSetBindings = { globalSetBinding0, globalSetBinding1, globalSetBinding2 };
 
 	VkDescriptorSetLayoutCreateInfo globalSetLayoutCI{};
 	globalSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -583,6 +596,9 @@ Scene::Scene(Device& device) : device_(device)
 		perDrawbufferInfo.buffer = perMeshDrawDataBuffer[i]->operator const VkBuffer & ();
 		perDrawbufferInfo.range = VK_WHOLE_SIZE;
 
+		VkDescriptorBufferInfo lightBufferInfo{};
+		lightBufferInfo.buffer = lightBuffer[i]->operator const VkBuffer & ();
+		lightBufferInfo.range = VK_WHOLE_SIZE;
 
 		VkWriteDescriptorSet writeSetBinding0{};
 		writeSetBinding0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -601,9 +617,18 @@ Scene::Scene(Device& device) : device_(device)
 		writeSetBinding1.dstBinding = 1;
 		writeSetBinding1.dstSet = globalSets_[i];
 		writeSetBinding1.pBufferInfo = &perDrawbufferInfo;
-
-		std::array writes = { writeSetBinding0, writeSetBinding1 };
-		vkUpdateDescriptorSets(device.device, 2, writes.data(), 0, nullptr);
+		
+		VkWriteDescriptorSet writeSetBinding2{};
+		writeSetBinding2.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeSetBinding2.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeSetBinding2.descriptorCount = 1;
+		writeSetBinding2.dstArrayElement = 0;
+		writeSetBinding2.dstBinding = 2;
+		writeSetBinding2.dstSet = globalSets_[i];
+		writeSetBinding2.pBufferInfo = &lightBufferInfo;
+		
+		std::array writes = { writeSetBinding0, writeSetBinding1, writeSetBinding2 };
+		vkUpdateDescriptorSets(device.device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 	}
 }
 
@@ -972,23 +997,30 @@ void Scene::loadGLTF(const std::string& path)
 
 }
 
-void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colorView, VkImageView depthView)
+void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView colorView, VkImageView depthView)
 {
 	if (!accum || !reveal)
 	{
-		recreateAccumReveal(camera.viewportWidth, camera.viewportHeight);
+		recreateAccumReveal(state.camera_->viewportWidth, state.camera_->viewportHeight);
 	}
-	if (compositeWidth != camera.viewportWidth || compositeHeight != camera.viewportHeight)
+	if (compositeWidth != state.camera_->viewportWidth || compositeHeight != state.camera_->viewportHeight)
 	{
-		recreateAccumReveal(camera.viewportWidth, camera.viewportHeight);
+		recreateAccumReveal(state.camera_->viewportWidth, state.camera_->viewportHeight);
 	}
 
 	{ // Global UBO
 		GlobalUniform uniform{};
-		uniform.projection = camera.calculateProjection();
-		uniform.view = camera.calculateView();
-		uniform.viewPos = camera.position;
+		uniform.projection = state.camera_->calculateProjection();
+		uniform.view = state.camera_->calculateView();
+		uniform.viewPos = state.camera_->position;
 		globalUniformBuffers_[frameCount_]->upload(&uniform, sizeof(uniform));
+	}
+
+	{ // Light
+		LightUpload upload{};
+		upload.count = static_cast<int32_t>(state.lights_.size());
+		lightBuffer[frameCount_]->upload(&upload, sizeof(upload));
+		lightBuffer[frameCount_]->upload(state.lights_.data(), state.lights_.size() * sizeof(Light), sizeof(upload));
 	}
 
 	// Group stuff
@@ -1096,7 +1128,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 		VkRenderingInfo renderInfo{};
 		renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 		renderInfo.renderArea.offset = { 0, 0 };
-		renderInfo.renderArea.extent = { uint32_t(camera.viewportWidth), uint32_t(camera.viewportHeight) };
+		renderInfo.renderArea.extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
 		renderInfo.layerCount = 1;
 		renderInfo.colorAttachmentCount = 1;
 		renderInfo.pColorAttachments = &colorAttachment;
@@ -1106,15 +1138,15 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 
 		VkViewport viewport{};
 		viewport.x = 0.0f;
-		viewport.y = camera.viewportHeight;
-		viewport.width = camera.viewportWidth;
-		viewport.height = -camera.viewportHeight;
+		viewport.y = state.camera_->viewportHeight;
+		viewport.width = state.camera_->viewportWidth;
+		viewport.height = -state.camera_->viewportHeight;
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
 		VkRect2D scissor{};
-		scissor.extent = { uint32_t(camera.viewportWidth), uint32_t(camera.viewportHeight) };
+		scissor.extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 		size_t offset = 0;
@@ -1264,7 +1296,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colo
 
 	*/
 
-	infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, { uint32_t(camera.viewportWidth), uint32_t(camera.viewportHeight) });
+	infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) });
 
 	/*
 	Transition::ShaderReadOptimalToColorAttachment(accum->Get(), commandBuffer);

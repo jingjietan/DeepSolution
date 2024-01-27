@@ -8,6 +8,7 @@
 #include "../Camera.h"
 #include "../Core/Image.h" // todo: cannot forward declare image?
 #include "../Render/InfiniteGrid.h"
+#include "../State.h"
 
 class Device;
 class Buffer;
@@ -82,7 +83,7 @@ public:
 
 	void loadGLTF(const std::string& path);
 
-	void draw(VkCommandBuffer commandBuffer, Camera& camera, VkImageView colorView, VkImageView depthView);
+	void draw(VkCommandBuffer commandBuffer, const State& state, VkImageView colorView, VkImageView depthView);
 
 	~Scene();
 private:
@@ -123,6 +124,12 @@ private:
 	void initialiseDefaultTextures();
 
 	std::vector<std::unique_ptr<Buffer>> perMeshDrawDataBuffer;
+	std::vector<std::unique_ptr<Buffer>> lightBuffer;
+	struct alignas(16) LightUpload // base alignment
+	{
+		int32_t count;
+	};
+
 	VkDescriptorPool globalPool_{};
 	VkDescriptorSetLayout globalSetLayout{};
 

@@ -7,6 +7,10 @@
 #include <volk.h>
 #include <spdlog/spdlog.h>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/string_cast.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 Application::Application(int width, int height)
 {
 	check(glfwInit());
@@ -29,10 +33,10 @@ Application::Application(int width, int height)
 			return;
 		}
 
-		app->camera_->moveDirection(dX, dY);
+		app->state_.camera_->moveDirection(dX, dY);
 		});
 
-	camera_ = std::make_unique<Camera>(glm::vec3(0, 2, 0), 0.f, -177.f, width, height, 0.01f, 50.0f);
+	state_.camera_ = std::make_unique<Camera>(glm::vec3(0, 2, 0), 0.f, -177.f, width, height, 0.01f, 50.0f);
 
 	device_.init(window_);
 	
@@ -78,7 +82,7 @@ void Application::run()
 		// Update Camera
 		int width, height;
 		glfwGetFramebufferSize(window_, &width, &height);
-		camera_->updateViewport(width, height);
+		state_.camera_->updateViewport(width, height);
 
 		// 
 		if (glfwGetKey(window_, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -104,29 +108,45 @@ void Application::run()
 		}
 
 
-		auto deltaTime = timer_.getDeltaTime();
+		auto deltaTime = state_.timer_.getDeltaTime();
 		timeout -= deltaTime;
 
 		if (glfwGetKey(window_, GLFW_KEY_W) == GLFW_PRESS)
 		{
-			camera_->movePosition(Direction::Forward, deltaTime);
+			state_.camera_->movePosition(Direction::Forward, deltaTime);
 		}
 		if (glfwGetKey(window_, GLFW_KEY_S) == GLFW_PRESS)
 		{
-			camera_->movePosition(Direction::Backward, deltaTime);
+			state_.camera_->movePosition(Direction::Backward, deltaTime);
 		}
 		if (glfwGetKey(window_, GLFW_KEY_A) == GLFW_PRESS)
 		{
-			camera_->movePosition(Direction::Left, deltaTime);
+			state_.camera_->movePosition(Direction::Left, deltaTime);
 		}
 		if (glfwGetKey(window_, GLFW_KEY_D) == GLFW_PRESS)
 		{
-			camera_->movePosition(Direction::Right, deltaTime);
+			state_.camera_->movePosition(Direction::Right, deltaTime);
 		}
 
 		imgui_->BeginFrame();
 
 		ImGui::ShowDemoWindow();
+
+		ImGui::Begin("Lights", &showLightMenu_);
+		ImGui::SeparatorText("Lights");
+		for (size_t i = 0; i < state_.lights_.size(); i++)
+		{
+			ImGui::Text("Light [%d]: %s", i, glm::to_string(state_.lights_[i].position).c_str());
+		}
+
+		ImGui::SeparatorText("Add light");
+		ImGui::SliderFloat3("Position", glm::value_ptr(lightPosition_), -10.0f, 10.0f);
+		if (ImGui::Button("Add light"))
+		{
+			state_.lights_.push_back(Light{ lightPosition_ });
+			lightPosition_ = glm::vec3();
+		}
+		ImGui::End();
 
 		imgui_->EndFrame();
 
@@ -161,7 +181,7 @@ void Application::Draw()
 
 	Transition::UndefinedToColorAttachment(swapchain_->GetCurrentImage(), commandBuffer);
 
-	scene_->draw(commandBuffer, *camera_, swapchain_->GetCurrentImageView(), swapchain_->GetDepthImageView());
+	scene_->draw(commandBuffer, state_, swapchain_->GetCurrentImageView(), swapchain_->GetDepthImageView());
 	
 	// ImGui Rendering
 	imgui_->Draw(swapchain_->GetCurrentImageView(), swapchain_->GetExtent(), commandBuffer);

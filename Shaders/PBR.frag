@@ -16,6 +16,11 @@ layout(location = 7) in vec3 viewPos;
 
 layout(location = 0) out vec4 outColor;
 
+layout(std430, set = 0, binding = 2) readonly buffer Lights {
+	int lightCount;
+    Light lights[];
+};
+
 layout(set = 1, binding = 0) uniform sampler2D defaultTextures[4];
 layout(set = 1, binding = 1) uniform sampler2D textures[];
 
@@ -64,10 +69,15 @@ void main() {
 
     vec3 Lo = vec3(0.0);
 	// Per light
-	Light light;
-	light.position = vec3(3, 1, 0);
+	//Light light;
+	//light.position = vec3(3, 1, 0);
+
+	for (int i = 0; i < lightCount; i++)
+	{
+		Lo += calculatePointLight(lights[i], fragPos, viewPos, V, N, material);
+	}
 	
-	Lo += calculatePointLight(light, fragPos, viewPos, V, N, material);
+	// Lo += calculatePointLight(light, fragPos, viewPos, V, N, material);
 	// ---- 
 
 	vec3 ambient = vec3(0.03) * material.color.xyz;

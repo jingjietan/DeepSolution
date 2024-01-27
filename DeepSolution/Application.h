@@ -12,6 +12,8 @@
 #include "Scene/Scene.h"
 #include "Camera.h"
 #include "Timer.h"
+#include "Light.h"
+#include "State.h"
 
 class Application
 {
@@ -31,8 +33,12 @@ private:
 	std::unique_ptr<ImGuiAdapter> imgui_;
 	std::unique_ptr<Scene> scene_;
 
-	std::unique_ptr<Camera> camera_;
-	Timer timer_;
+	State state_{};
+	//
+	bool showLightMenu_ = true;
+	glm::vec3 lightPosition_{};
+
+	
 
 public:
 	bool isFocused;

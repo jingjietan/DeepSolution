@@ -252,4 +252,5 @@ VkFormat Device::getDepthFormat() const
 		}
 	}
 	check(false, "Failed to select depth format!");
+	__assume(false);
 }
