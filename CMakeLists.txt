@@ -13,9 +13,12 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
 
+find_package(tsl-robin-map CONFIG REQUIRED)
+find_package(GTest CONFIG REQUIRED)
+
 add_subdirectory(third-party)
 
-add_executable (DeepSolution "DeepSolution.cpp" "DeepSolution/Core/Swapchain.h" "DeepSolution/Core/Swapchain.cpp" "DeepSolution/Core/Common.h" "DeepSolution/Core/Common.cpp"   "DeepSolution/Application.h" "DeepSolution/Application.cpp" "DeepSolution/Core/Transition.h" "DeepSolution/Core/Transition.cpp" "DeepSolution/Implementation/VMA.cpp" "DeepSolution/Core/Image.h" "DeepSolution/Core/Image.cpp"   "DeepSolution/Core/Device.h" "DeepSolution/Core/Device.cpp" "DeepSolution/ImGuiAdapter.h" "DeepSolution/ImGuiAdapter.cpp"   "DeepSolution/Scene/Scene.h" "DeepSolution/Scene/Scene.cpp" "DeepSolution/Implementation/TinyGLTF.cpp" "DeepSolution/Core/Buffer.h" "DeepSolution/Core/Buffer.cpp" "DeepSolution/Core/Shader.h" "DeepSolution/Core/Shader.cpp" "DeepSolution/Camera/Camera.h" "DeepSolution/Camera/Camera.cpp" "DeepSolution/Timer.h" "DeepSolution/Timer.cpp"  "DeepSolution/Render/InfiniteGrid.h" "DeepSolution/Render/InfiniteGrid.cpp" "DeepSolution/Light.h" "DeepSolution/State.h" "DeepSolution/Camera/ArcballCamera.h" "DeepSolution/Camera/FreeCamera.h" "DeepSolution/Camera/FreeCamera.cpp" "DeepSolution/Camera/ArcballCamera.cpp")
+add_executable (DeepSolution "DeepSolution.cpp" "DeepSolution/Core/Swapchain.h" "DeepSolution/Core/Swapchain.cpp" "DeepSolution/Core/Common.h" "DeepSolution/Core/Common.cpp"   "DeepSolution/Application.h" "DeepSolution/Application.cpp" "DeepSolution/Core/Transition.h" "DeepSolution/Core/Transition.cpp" "DeepSolution/Implementation/VMA.cpp" "DeepSolution/Core/Image.h" "DeepSolution/Core/Image.cpp"   "DeepSolution/Core/Device.h" "DeepSolution/Core/Device.cpp" "DeepSolution/ImGuiAdapter.h" "DeepSolution/ImGuiAdapter.cpp"   "DeepSolution/Scene/Scene.h" "DeepSolution/Scene/Scene.cpp" "DeepSolution/Implementation/TinyGLTF.cpp" "DeepSolution/Core/Buffer.h" "DeepSolution/Core/Buffer.cpp" "DeepSolution/Core/Shader.h" "DeepSolution/Core/Shader.cpp" "DeepSolution/Camera/Camera.h" "DeepSolution/Camera/Camera.cpp" "DeepSolution/Timer.h" "DeepSolution/Timer.cpp"  "DeepSolution/Render/InfiniteGrid.h" "DeepSolution/Render/InfiniteGrid.cpp" "DeepSolution/Light.h" "DeepSolution/State.h" "DeepSolution/Camera/ArcballCamera.h" "DeepSolution/Camera/FreeCamera.h" "DeepSolution/Camera/FreeCamera.cpp" "DeepSolution/Camera/ArcballCamera.cpp" "DeepSolution/Common/Handle.h" "DeepSolution/TextureLoader.h")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Headers GPUOpen::VulkanMemoryAllocator)
 target_link_libraries(${PROJECT_NAME} PRIVATE volk::volk)
@@ -24,12 +27,19 @@ target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
 target_link_libraries(${PROJECT_NAME} PRIVATE glm::glm)
 target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap::vk-bootstrap)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE tsl::robin_map)
+
 # target_link_libraries(${PROJECT_NAME} PRIVATE Tracy::TracyClient)
 target_include_directories(${PROJECT_NAME} PRIVATE ${TINYGLTF_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PRIVATE ${Stb_INCLUDE_DIR})
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 # target_compile_definitions(${PROJECT_NAME} PUBLIC TRACY_ENABLE TRACY_VK_USE_SYMBOL_TABLE)
+
+if (CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    add_subdirectory(test)
+endif()
 
 # For GLTF Compatibility
 target_compile_definitions(${PROJECT_NAME} PUBLIC VK_NO_PROTOTYPES VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0 GLM_FORCE_DEPTH_ZERO_TO_ONE)

@@ -6,6 +6,8 @@
     "vulkan-memory-allocator",
     "spdlog",
     "stb",
-    "tinygltf"
+    "tinygltf",
+    "robin-map",
+    "gtest"
   ]
 }

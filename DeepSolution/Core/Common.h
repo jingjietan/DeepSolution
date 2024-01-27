@@ -5,6 +5,7 @@
 #include <functional>
 
 #include <vulkan/vulkan.h>
+#include <volk.h>
 
 // Check
 
@@ -26,11 +27,23 @@ void check(auto condition, const std::string& message = "", const std::source_lo
 	check(static_cast<bool>(condition), message, location);
 }
 
+//
+
+template<class T>
+struct AsyncTransfer
+{
+	VkCommandBuffer commandBuffer = nullptr;
+	uint32_t frameCount = 0;
+	VkSemaphore semaphore = nullptr;
+	VkFence fence = nullptr;
+	T discardResource;
+};
+
 namespace CreateInfo {
 	VkFence createFence(VkDevice device, VkFenceCreateFlags flags);
 	VkSemaphore createBinarySemaphore(VkDevice device);
 	VkCommandBuffer allocateCommandBuffer(VkDevice device, VkCommandPool commandPool);
-	
+
 	VkCommandPool createCommandPool(VkDevice device, uint32_t queueFamily, uint32_t flags = 0);
 	void performOneTimeAction(VkDevice device, VkQueue queue, VkCommandPool commandPool, const std::function<void(VkCommandBuffer)>& action);
 
@@ -38,7 +51,7 @@ namespace CreateInfo {
 
 	VkPipelineShaderStageCreateInfo ShaderStage(VkShaderStageFlagBits stage, VkShaderModule module);
 	VkPipelineVertexInputStateCreateInfo VertexInputState(VkVertexInputBindingDescription* pBinding, size_t bindingCount, VkVertexInputAttributeDescription* pAttribute, size_t attributeCount);
-	VkPipelineInputAssemblyStateCreateInfo InputAssemblyState(VkPrimitiveTopology topology); 
+	VkPipelineInputAssemblyStateCreateInfo InputAssemblyState(VkPrimitiveTopology topology);
 	VkPipelineViewportStateCreateInfo ViewportState();
 	VkPipelineRasterizationStateCreateInfo RasterizationState(VkBool32 depthClamp, VkCullModeFlags cullMode, VkFrontFace frontFace);
 	VkPipelineMultisampleStateCreateInfo MultisampleState();
@@ -47,6 +60,52 @@ namespace CreateInfo {
 	VkPipelineColorBlendStateCreateInfo ColorBlendState(VkPipelineColorBlendAttachmentState* pAttachment, size_t attachmentCount);
 	VkPipelineDynamicStateCreateInfo DynamicState(VkDynamicState* pDynamicState, size_t dynamicStateCount);
 	VkPipelineRenderingCreateInfo Rendering(VkFormat* colorFormats, size_t colorFormatCount, VkFormat depthFormat);
+
+	template<class T>
+	AsyncTransfer<T> performAsyncAction(VkDevice device, VkQueue queue, VkCommandPool commandPool, const std::function<T(VkCommandBuffer)>& action)
+	{
+		AsyncTransfer<T> async{};
+		async.commandBuffer = allocateCommandBuffer(device, commandPool);
+		async.semaphore = createBinarySemaphore(device);
+		async.fence = createFence(device, 0);
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		vkBeginCommandBuffer(async.commandBuffer, &beginInfo);
+
+		async.discardResource = action(async.commandBuffer);
+
+		vkEndCommandBuffer(async.commandBuffer);
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &async.commandBuffer;
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &async.semaphore;
+
+		check(vkQueueSubmit(queue, 1, &submitInfo, async.fence));
+		return async;
+	}
+
+	template<class T>
+	void cleanupAsync(VkDevice device, VkCommandPool commandPool, uint32_t framesToWait, AsyncTransfer<T>& transfer)
+	{
+		if (transfer.fence && vkGetFenceStatus(device, transfer.fence) == VK_SUCCESS)
+		{
+			vkFreeCommandBuffers(device, commandPool, 1, &transfer.commandBuffer);
+			vkDestroyFence(device, transfer.fence, nullptr);
+			transfer.fence = nullptr;
+		}
+
+		if (transfer.semaphore && transfer.frameCount >= framesToWait)
+		{
+			transfer.discardResource.reset();
+			vkDestroySemaphore(device, transfer.semaphore, nullptr);
+			transfer.semaphore = nullptr;
+		}
+		transfer.frameCount++;
+	}
 }
 
 // Connecting pNext
@@ -97,6 +156,12 @@ template<>
 inline void setName<VkDescriptorPool>(Device& device, VkDescriptorPool queue, const std::string& name)
 {
 	Detail::setName(device, VK_OBJECT_TYPE_DESCRIPTOR_POOL, queue, name);
+}
+
+template<>
+inline void setName<VkImage>(Device& device, VkImage queue, const std::string& name)
+{
+	Detail::setName(device, VK_OBJECT_TYPE_IMAGE, queue, name);
 }
 
 // Misc

@@ -8,21 +8,17 @@
 #include "../Core/Image.h" // todo: cannot forward declare image?
 #include "../Render/InfiniteGrid.h"
 #include "../State.h"
+#include "../Common/Handle.h"
+#include "../Core/Common.h"
 
 class Device;
 class Buffer;
 class Image;
 
-struct Allocation
-{
-	VmaVirtualAllocation allocation;
-	VkDeviceSize offset;
-};
-
 struct Submesh
 {
-	Allocation vertexAlloc;
-	Allocation indexAlloc;
+	VmaVirtualAllocation vertexAlloc;
+	VmaVirtualAllocation indexAlloc;
 	uint32_t indexCount;
 	uint32_t firstIndex;
 	int32_t vertexOffset;
@@ -82,7 +78,11 @@ public:
 
 	void loadGLTF(const std::string& path);
 
+	Handle loadTexture(const std::string& path);
+
 	void draw(VkCommandBuffer commandBuffer, const State& state, VkImageView colorView, VkImageView depthView);
+
+	void doCleanup();
 
 	~Scene();
 private:
@@ -135,13 +135,15 @@ private:
 	VkDescriptorPool bindlessPool{};
 	VkDescriptorSetLayout bindlessSetLayout{};
 
+	HandleMap<std::unique_ptr<Image>> loadedTextures_;
+	std::vector<AsyncTransfer<std::unique_ptr<Buffer>>> asyncTransfers_;
 	VkPipelineLayout pipelineLayout_{};
 
 	std::vector<std::unique_ptr<Buffer>> globalUniformBuffers_;
 	std::vector<VkDescriptorSet> globalSets_;
 	VkDescriptorSet bindlessSet_{};
 
-	static Allocation performAllocation(VmaVirtualBlock block, VkDeviceSize size);
+	static VmaVirtualAllocation performAllocation(VmaVirtualBlock block, VkDeviceSize size, VkDeviceSize& offset);
 
 	uint32_t frameCount_{};
 	uint32_t maxFramesInFlight;

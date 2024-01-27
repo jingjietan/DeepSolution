@@ -234,6 +234,10 @@ Application::Application(int width, int height)
 	swapchain_ = std::make_unique<Swapchain>(device_, device_.getDepthFormat());
 
 	scene_ = std::make_unique<Scene>(device_);
+
+	auto cubemap = scene_->loadTexture("assets/rostock_laage_airport_4k.hdr");
+	check(cubemap != Handle::Invalid);
+	
 	// scene_->loadGLTF("assets/subway/scene.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/SciFiHelmet/glTF/SciFiHelmet.gltf");
@@ -315,11 +319,18 @@ void Application::run()
 			state_.lights_.push_back(Light{ lightPosition_ });
 			lightPosition_ = glm::vec3();
 		}
+		
+		if (ImGui::Button("Load texture"))
+		{
+			scene_->loadTexture("assets/rostock_laage_airport_4k.hdr");
+		}
 		ImGui::End();
 
 		imgui_->EndFrame();
 
 		Draw();
+
+		scene_->doCleanup();
 	}
 }
 
