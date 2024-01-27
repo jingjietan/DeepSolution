@@ -260,6 +260,7 @@ Scene::Scene(Device& device) : device_(device)
 {
 	maxFramesInFlight = device.getMaxFramesInFlight();
 
+	// TODO: make these buffers resizable.
 	constexpr size_t vertexBufferSize = 1024ull * 1024ull * 1024ull; // 1gb.
 	constexpr size_t indexBufferSize = 256ull * 1024ull * 1024ull; // 256mb;
 	constexpr size_t indirectBufferSize = 2048ull * sizeof(VkDrawIndexedIndirectCommand);
@@ -1012,7 +1013,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 		GlobalUniform uniform{};
 		uniform.projection = state.camera_->calculateProjection();
 		uniform.view = state.camera_->calculateView();
-		uniform.viewPos = state.camera_->position;
+		uniform.viewPos = state.camera_->getPosition();
 		globalUniformBuffers_[frameCount_]->upload(&uniform, sizeof(uniform));
 	}
 

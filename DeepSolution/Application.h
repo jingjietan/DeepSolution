@@ -10,9 +10,6 @@
 
 #include <memory>
 #include "Scene/Scene.h"
-#include "Camera.h"
-#include "Timer.h"
-#include "Light.h"
 #include "State.h"
 
 class Application

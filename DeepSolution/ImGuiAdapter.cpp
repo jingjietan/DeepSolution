@@ -27,7 +27,7 @@ ImGuiAdapter::ImGuiAdapter(GLFWwindow* window, Device& device): device_(device)
 	check(vkCreateDescriptorPool(device.device, &descriptorPoolCI, nullptr, &descriptorPool_));
 
 	//
-	ImGui_ImplGlfw_InitForVulkan(window, true);
+	ImGui_ImplGlfw_InitForVulkan(window, false);
 
 	ImGui_ImplVulkan_LoadFunctions([](const char* fn, void* data) {
 		return vkGetInstanceProcAddr(reinterpret_cast<VkInstance>(data), fn);

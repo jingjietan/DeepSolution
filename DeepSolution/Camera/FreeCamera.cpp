@@ -1,31 +1,26 @@
+#include "FreeCamera.h"
+
 #include "Camera.h"
 
 #include <glm/gtc/matrix_transform.hpp>
-#include <spdlog/spdlog.h>
 
-Camera::Camera(glm::vec3 position, float pitch, float yaw, float viewportWidth, float viewportHeight, float nearPlane, float farPlane)
-	:position(position), pitch(pitch), yaw(yaw), viewportWidth(viewportWidth), viewportHeight(viewportHeight), nearPlane(nearPlane), farPlane(farPlane)
+FreeCamera::FreeCamera(glm::vec3 position, float pitch, float yaw, float viewportWidth, float viewportHeight, float nearPlane, float farPlane)
+	:position(position), pitch(pitch), yaw(yaw), Camera(viewportWidth, viewportHeight, nearPlane, farPlane)
 {
 	updateFront();
 }
 
-glm::mat4 Camera::calculateView() const
+glm::mat4 FreeCamera::calculateView() const
 {
 	return glm::lookAt(position, position + front, glm::normalize(glm::cross(right, front)));
 }
 
-glm::mat4 Camera::calculateProjection()
+glm::mat4 FreeCamera::calculateProjection() const
 {
 	return glm::perspective(glm::radians(45.0f), viewportWidth / viewportHeight, nearPlane, farPlane);
 }
 
-void Camera::updateViewport(float width, float height)
-{
-	viewportWidth = width;
-	viewportHeight = height;
-}
-
-void Camera::movePosition(Direction direction, float deltaTime)
+void FreeCamera::movePosition(Direction direction, float deltaTime)
 {
 	constexpr float movementSpeed = 5.f;
 	switch (direction)
@@ -47,7 +42,7 @@ void Camera::movePosition(Direction direction, float deltaTime)
 	}
 }
 
-void Camera::moveDirection(float dx, float dy)
+void FreeCamera::moveDirection(float dx, float dy)
 {
 	dx *= 0.1f;
 	dy *= 0.1f;
@@ -68,12 +63,21 @@ void Camera::moveDirection(float dx, float dy)
 	updateFront();
 }
 
-const glm::vec3& Camera::getFront() const
+glm::vec3 FreeCamera::getPosition() const
+{
+	return position;
+}
+
+void FreeCamera::scrollWheel(float dx, float dy)
+{
+}
+
+const glm::vec3& FreeCamera::getFront() const
 {
 	return front;
 }
 
-void Camera::updateFront()
+void FreeCamera::updateFront()
 {
 	front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
 	front.y = sin(glm::radians(pitch));

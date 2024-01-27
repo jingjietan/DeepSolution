@@ -5,7 +5,6 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include "../Camera.h"
 #include "../Core/Image.h" // todo: cannot forward declare image?
 #include "../Render/InfiniteGrid.h"
 #include "../State.h"

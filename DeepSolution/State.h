@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <vector>
-#include "Camera.h"
+#include "Camera/Camera.h"
 #include "Light.h"
 #include "Timer.h"
 
