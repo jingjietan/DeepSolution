@@ -63,6 +63,7 @@ void Device::init(void* window)
 		VkPhysicalDeviceVulkan11Features vulkan11feature{};
 		vulkan11feature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
 		vulkan11feature.shaderDrawParameters = VK_TRUE;
+		vulkan11feature.multiview = VK_TRUE;
 		vulkan11feature.pNext = &scalar;
 		VkPhysicalDeviceSynchronization2Features synchronization{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES };
 		synchronization.synchronization2 = VK_TRUE;

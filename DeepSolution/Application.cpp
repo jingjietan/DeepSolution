@@ -235,8 +235,7 @@ Application::Application(int width, int height)
 
 	scene_ = std::make_unique<Scene>(device_);
 
-	auto cubemap = scene_->loadCubeMap("assets/rostock_laage_airport_4k.hdr");
-	check(cubemap.get());
+	scene_->loadCubeMap("assets/rostock_laage_airport_4k.hdr");
 	
 	// scene_->loadGLTF("assets/subway/scene.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf");
@@ -353,7 +352,7 @@ void Application::Draw()
 	// Scene Rendering
 	auto commandBuffer = swapchain_->Acquire(width , height);
 
-	Transition::UndefinedToColorAttachment(swapchain_->GetCurrentImage(), commandBuffer);
+	Transition::UndefinedToColorAttachment(swapchain_->GetCurrentImage(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
 
 	scene_->draw(commandBuffer, state_, swapchain_->GetCurrentImageView(), swapchain_->GetDepthImageView());
 	

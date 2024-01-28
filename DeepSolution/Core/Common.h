@@ -38,6 +38,7 @@ namespace CreateInfo {
 
 	VkRenderPass createRenderPass(VkDevice device, const VkAttachmentDescription2* pAttachments, uint32_t attachmentCount, const VkSubpassDescription2* pSubpass, uint32_t subpassCount, const VkSubpassDependency2* pDependency, uint32_t dependencyCount);
 
+	VkViewport Viewport(VkExtent2D extent);
 	VkPipelineShaderStageCreateInfo ShaderStage(VkShaderStageFlagBits stage, VkShaderModule module);
 	VkPipelineVertexInputStateCreateInfo VertexInputState(VkVertexInputBindingDescription* pBinding, size_t bindingCount, VkVertexInputAttributeDescription* pAttribute, size_t attributeCount);
 	VkPipelineInputAssemblyStateCreateInfo InputAssemblyState(VkPrimitiveTopology topology);
@@ -49,6 +50,9 @@ namespace CreateInfo {
 	VkPipelineColorBlendStateCreateInfo ColorBlendState(VkPipelineColorBlendAttachmentState* pAttachment, size_t attachmentCount);
 	VkPipelineDynamicStateCreateInfo DynamicState(VkDynamicState* pDynamicState, size_t dynamicStateCount);
 	VkPipelineRenderingCreateInfo Rendering(VkFormat* colorFormats, size_t colorFormatCount, VkFormat depthFormat);
+
+	VkImageCreateInfo Image2DCI(VkExtent2D extent, uint32_t mipLevels, VkFormat format, VkImageUsageFlags usage);
+	VkSamplerCreateInfo SamplerCI(uint32_t mipLevels, VkSamplerAddressMode addressMode, VkFilter filterMode, VkSamplerMipmapMode mipmapMode, float maxAnisotropy);
 }
 
 // Connecting pNext

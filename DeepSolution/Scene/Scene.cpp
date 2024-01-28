@@ -507,6 +507,7 @@ Scene::Scene(Device& device) : device_(device)
 
 	// Infinite Grid
 	infiniteGrid_ = std::make_unique<InfiniteGrid>(device_, globalSetLayout);
+	flattenCubemap_ = std::make_unique<FlattenCubemap>(device_);
 
 	// Model Push Constant
 	VkPushConstantRange pushRange{};
@@ -1000,12 +1001,13 @@ void Scene::loadGLTF(const std::string& path)
 
 }
 
-std::unique_ptr<Image>  Scene::loadCubeMap(const std::string& path)
+void Scene::loadCubeMap(const std::string& path)
 {
 	int x, y, nr;
 	auto data = stbi_loadf(path.c_str(), &x, &y, &nr, 4);
 	check(data);
 
+	const auto format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	const auto mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(x, y)))) + 1;
 	const VkImageSubresourceRange range = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT , .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = 1 };
 
@@ -1018,7 +1020,7 @@ std::unique_ptr<Image>  Scene::loadCubeMap(const std::string& path)
 	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageCI.mipLevels = mipLevels;
-	imageCI.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	imageCI.format = format;
 	imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	auto img = std::make_unique<Image>(device_, imageCI);
@@ -1038,7 +1040,7 @@ std::unique_ptr<Image>  Scene::loadCubeMap(const std::string& path)
 
 	img->AttachSampler(samplerInfo);
 
-	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint16_t);
+	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint32_t);
 	Buffer stagingBuffer(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 	stagingBuffer.upload(data, imageSize);
 
@@ -1048,11 +1050,12 @@ std::unique_ptr<Image>  Scene::loadCubeMap(const std::string& path)
 		img->Upload(commandBuffer, stagingBuffer.operator const VkBuffer & ());
 
 		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
-		});
 
-	setName(device_, img->Get(), path);
+		auto ptr = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 512, 512);
+		cubeMap_ = std::move(ptr);
+	});
 
-	return img;
+	setName(device_, cubeMap_->Get(), path);
 }
 
 /*
@@ -1539,8 +1542,8 @@ void Scene::recreateAccumReveal(int width, int height)
 	reveal->AttachSampler(samplerInfo);
 
 	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
-		Transition::UndefinedToColorAttachment(accum->Get(), commandBuffer);
-		Transition::UndefinedToColorAttachment(reveal->Get(), commandBuffer);
+		Transition::UndefinedToColorAttachment(accum->Get(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+		Transition::UndefinedToColorAttachment(reveal->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 	});
 
 	VkDescriptorImageInfo accumImageInfo{};

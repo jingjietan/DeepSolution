@@ -13,12 +13,17 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
 
+find_package(spirv_cross_core CONFIG REQUIRED)
+find_package(spirv_cross_glsl CONFIG REQUIRED)
+find_package(spirv_cross_cpp CONFIG REQUIRED)
+find_package(spirv_cross_reflect CONFIG REQUIRED)
+ 
 find_package(tsl-robin-map CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 
 add_subdirectory(third-party)
 
-add_executable (DeepSolution "DeepSolution.cpp" "DeepSolution/Core/Swapchain.h" "DeepSolution/Core/Swapchain.cpp" "DeepSolution/Core/Common.h" "DeepSolution/Core/Common.cpp"   "DeepSolution/Application.h" "DeepSolution/Application.cpp" "DeepSolution/Core/Transition.h" "DeepSolution/Core/Transition.cpp" "DeepSolution/Implementation/VMA.cpp" "DeepSolution/Core/Image.h" "DeepSolution/Core/Image.cpp"   "DeepSolution/Core/Device.h" "DeepSolution/Core/Device.cpp" "DeepSolution/ImGuiAdapter.h" "DeepSolution/ImGuiAdapter.cpp"   "DeepSolution/Scene/Scene.h" "DeepSolution/Scene/Scene.cpp" "DeepSolution/Implementation/TinyGLTF.cpp" "DeepSolution/Core/Buffer.h" "DeepSolution/Core/Buffer.cpp" "DeepSolution/Core/Shader.h" "DeepSolution/Core/Shader.cpp" "DeepSolution/Camera/Camera.h" "DeepSolution/Camera/Camera.cpp" "DeepSolution/Timer.h" "DeepSolution/Timer.cpp"  "DeepSolution/Render/InfiniteGrid.h" "DeepSolution/Render/InfiniteGrid.cpp" "DeepSolution/Light.h" "DeepSolution/State.h" "DeepSolution/Camera/ArcballCamera.h" "DeepSolution/Camera/FreeCamera.h" "DeepSolution/Camera/FreeCamera.cpp" "DeepSolution/Camera/ArcballCamera.cpp" "DeepSolution/Common/Handle.h" )
+add_executable (DeepSolution "DeepSolution.cpp" "DeepSolution/Core/Swapchain.h" "DeepSolution/Core/Swapchain.cpp" "DeepSolution/Core/Common.h" "DeepSolution/Core/Common.cpp"   "DeepSolution/Application.h" "DeepSolution/Application.cpp" "DeepSolution/Core/Transition.h" "DeepSolution/Core/Transition.cpp" "DeepSolution/Implementation/VMA.cpp" "DeepSolution/Core/Image.h" "DeepSolution/Core/Image.cpp"   "DeepSolution/Core/Device.h" "DeepSolution/Core/Device.cpp" "DeepSolution/ImGuiAdapter.h" "DeepSolution/ImGuiAdapter.cpp"   "DeepSolution/Scene/Scene.h" "DeepSolution/Scene/Scene.cpp" "DeepSolution/Implementation/TinyGLTF.cpp" "DeepSolution/Core/Buffer.h" "DeepSolution/Core/Buffer.cpp" "DeepSolution/Core/Shader.h" "DeepSolution/Core/Shader.cpp" "DeepSolution/Camera/Camera.h" "DeepSolution/Camera/Camera.cpp" "DeepSolution/Timer.h" "DeepSolution/Timer.cpp"  "DeepSolution/Render/InfiniteGrid.h" "DeepSolution/Render/InfiniteGrid.cpp" "DeepSolution/Light.h" "DeepSolution/State.h" "DeepSolution/Camera/ArcballCamera.h" "DeepSolution/Camera/FreeCamera.h" "DeepSolution/Camera/FreeCamera.cpp" "DeepSolution/Camera/ArcballCamera.cpp" "DeepSolution/Common/Handle.h"  "DeepSolution/Utility/FlattenCubemap.h" "DeepSolution/Utility/FlattenCubemap.cpp" "DeepSolution/Core/DescriptorWrite.h" "DeepSolution/Core/DescriptorWrite.cpp")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Headers GPUOpen::VulkanMemoryAllocator)
 target_link_libraries(${PROJECT_NAME} PRIVATE volk::volk)
@@ -27,6 +32,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
 target_link_libraries(${PROJECT_NAME} PRIVATE glm::glm)
 target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap::vk-bootstrap)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+target_link_libraries(${PROJECT_NAME} PRIVATE spirv-cross-core spirv-cross-cpp spirv-cross-glsl spirv-cross-reflect)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE tsl::robin_map)
 

@@ -4,7 +4,7 @@
 
 namespace Transition
 {
-	void UndefinedToColorAttachment(VkImage image, VkCommandBuffer commandBuffer);
+	void UndefinedToColorAttachment(VkImage image, VkCommandBuffer commandBuffer, const VkImageSubresourceRange& range);
 	void UndefinedToDepthStencilAttachment(VkImage image, VkCommandBuffer commandBuffer);
 	void UndefinedToTransferDestination(VkImage image, VkCommandBuffer commandBuffer, const VkImageSubresourceRange& range);
 	void ColorAttachmentToTransferDestination(VkImage image, VkCommandBuffer commandBuffer);

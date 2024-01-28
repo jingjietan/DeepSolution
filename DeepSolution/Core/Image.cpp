@@ -41,6 +41,19 @@ void Image::AttachImageView(const VkImageSubresourceRange& range)
 	check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &imageView_));
 }
 
+void Image::AttachCubeMapImageView(const VkImageSubresourceRange& range)
+{
+    assert(image_ && "Image is not initialised!");
+    VkImageViewCreateInfo imageViewCI{};
+    imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewCI.image = image_;
+    imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    imageViewCI.format = format_;
+    imageViewCI.subresourceRange = range;
+
+    check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &imageView_));
+}
+
 void Image::AttachSampler(const VkSamplerCreateInfo& samplerCI)
 {
 	assert(image_ && "Image is not initialised!");

@@ -10,6 +10,7 @@
 #include "../State.h"
 #include "../Common/Handle.h"
 #include "../Core/Common.h"
+#include "../Utility/FlattenCubemap.h"
 
 class Device;
 class Buffer;
@@ -78,7 +79,7 @@ public:
 
 	void loadGLTF(const std::string& path);
 
-	std::unique_ptr<Image> loadCubeMap(const std::string& path);
+	void loadCubeMap(const std::string& path);
 
 	// Handle loadTexture(const std::string& path);
 
@@ -135,7 +136,7 @@ private:
 	VkDescriptorPool bindlessPool{};
 	VkDescriptorSetLayout bindlessSetLayout{};
 
-	HandleMap<std::unique_ptr<Image>> loadedTextures_;
+	std::unique_ptr<Image> cubeMap_{};
 	
 	VkPipelineLayout pipelineLayout_{};
 
@@ -149,4 +150,6 @@ private:
 	uint32_t maxFramesInFlight;
 	//
 	std::unique_ptr<InfiniteGrid> infiniteGrid_;
+
+	std::unique_ptr<FlattenCubemap> flattenCubemap_;
 };

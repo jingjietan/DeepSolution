@@ -91,6 +91,18 @@ VkRenderPass CreateInfo::createRenderPass(VkDevice device, const VkAttachmentDes
 	return renderPass;
 }
 
+VkViewport CreateInfo::Viewport(VkExtent2D extent)
+{
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = static_cast<float>(extent.height);
+	viewport.width = static_cast<float>(extent.width);
+	viewport.height = -static_cast<float>(extent.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	return viewport;
+}
+
 VkPipelineShaderStageCreateInfo CreateInfo::ShaderStage(VkShaderStageFlagBits stage, VkShaderModule module)
 {
 	VkPipelineShaderStageCreateInfo shaderStage{};
@@ -204,6 +216,39 @@ VkPipelineRenderingCreateInfo CreateInfo::Rendering(VkFormat* colorFormats, size
 	renderingInfo.pColorAttachmentFormats = colorFormats;
 	renderingInfo.depthAttachmentFormat = depthFormat;
 	return renderingInfo;
+}
+
+VkImageCreateInfo CreateInfo::Image2DCI(VkExtent2D extent, uint32_t mipLevels, VkFormat format, VkImageUsageFlags usage)
+{
+	VkImageCreateInfo imageCI{};
+	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCI.imageType = VK_IMAGE_TYPE_2D;
+	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageCI.arrayLayers = 1;
+	imageCI.extent = { extent.width, extent.height, 1 };
+	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCI.mipLevels = mipLevels;
+	imageCI.format = format;
+	imageCI.usage = usage;
+	return imageCI;
+}
+
+VkSamplerCreateInfo CreateInfo::SamplerCI(uint32_t mipLevels, VkSamplerAddressMode addressMode, VkFilter filterMode, VkSamplerMipmapMode mipmapMode, float maxAnisotropy)
+{
+	VkSamplerCreateInfo samplerInfo{};
+	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerInfo.addressModeU = addressMode;
+	samplerInfo.addressModeV = addressMode;
+	samplerInfo.addressModeW = addressMode;
+	samplerInfo.minFilter = filterMode;
+	samplerInfo.magFilter = filterMode;
+	samplerInfo.mipmapMode = mipmapMode;
+	samplerInfo.maxLod = static_cast<float>(mipLevels);
+	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+	samplerInfo.anisotropyEnable = VK_TRUE;
+	samplerInfo.maxAnisotropy = maxAnisotropy;
+	return samplerInfo;
 }
 
 // ----

@@ -76,5 +76,6 @@ void Buffer::unmap()
 	if (!persistent)
 	{
 		vmaUnmapMemory(device_.allocator, allocation_);
+		data_ = nullptr;
 	}
 }

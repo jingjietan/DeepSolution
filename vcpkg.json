@@ -8,6 +8,7 @@
     "stb",
     "tinygltf",
     "robin-map",
-    "gtest"
+    "gtest",
+    "spirv-cross"
   ]
 }

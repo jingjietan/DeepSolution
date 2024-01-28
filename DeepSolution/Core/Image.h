@@ -14,6 +14,7 @@ public:
 
 	void AttachImageView(VkImageAspectFlags flags);
 	void AttachImageView(const VkImageSubresourceRange& range);
+	void AttachCubeMapImageView(const VkImageSubresourceRange& range);
 	void AttachSampler(const VkSamplerCreateInfo& samplerCI);
 	void Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const;
 
