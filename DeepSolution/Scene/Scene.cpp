@@ -1052,10 +1052,8 @@ void Scene::loadCubeMap(const std::string& path)
 
 		auto ptr = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 1024, 1024);
 
-
 		auto cubemapMiplevel = Image::calculateMaxMiplevels(1024, 1024);
-		// Transition::ColorAttachmentToShaderReadOptimal(ptr->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, cubemapMiplevel, 0, 6 });
-
+	
 		Transition::ColorAttachmentToTransferDestination(ptr->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, cubemapMiplevel, 0, 6 });
 
 		Image::generateCubemapMipmaps(ptr->Get(), 1024, cubemapMiplevel, commandBuffer);

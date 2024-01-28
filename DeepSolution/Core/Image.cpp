@@ -178,81 +178,78 @@ void Image::generateMipmaps(VkImage image, int width, int height, uint32_t mipLe
 
 void Image::generateCubemapMipmaps(VkImage image, int width, uint32_t mipLevels, VkCommandBuffer commandBuffer)
 {
-    for (uint32_t layer = 0; layer < 6; layer++)
-    {
-        VkImageMemoryBarrier2 barrier2{};
-        barrier2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-        barrier2.image = image;
-        barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier2.subresourceRange.baseArrayLayer = layer;
-        barrier2.subresourceRange.layerCount = 1;
-        barrier2.subresourceRange.levelCount = 1;
+    VkImageMemoryBarrier2 barrier2{};
+    barrier2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier2.image = image;
+    barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier2.subresourceRange.baseArrayLayer = 0;
+    barrier2.subresourceRange.layerCount = 6;
+    barrier2.subresourceRange.levelCount = 1;
 
-        VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-        dependencyInfo.imageMemoryBarrierCount = 1;
-        dependencyInfo.pImageMemoryBarriers = &barrier2;
+    VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+    dependencyInfo.imageMemoryBarrierCount = 1;
+    dependencyInfo.pImageMemoryBarriers = &barrier2;
 
-        for (uint32_t i = 1; i < mipLevels; i++) {
-            barrier2.subresourceRange.baseMipLevel = i - 1;
-            barrier2.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            barrier2.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier2.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-            barrier2.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-            barrier2.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-            barrier2.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-
-            vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
-
-            VkImageBlit2 blit{};
-            blit.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
-            blit.srcOffsets[0] = { 0, 0, 0 };
-            blit.srcOffsets[1] = { width, width, 1 };
-            blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.srcSubresource.mipLevel = i - 1;
-            blit.srcSubresource.baseArrayLayer = layer;
-            blit.srcSubresource.layerCount = 1;
-            blit.dstOffsets[0] = { 0, 0, 0 };
-            blit.dstOffsets[1] = { width > 1 ? width / 2 : 1, width > 1 ? width / 2 : 1, 1 };
-            blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.dstSubresource.mipLevel = i;
-            blit.dstSubresource.baseArrayLayer = layer;
-            blit.dstSubresource.layerCount = 1;
-
-            VkBlitImageInfo2 blitInfo{};
-            blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
-            blitInfo.dstImage = image;
-            blitInfo.srcImage = image;
-            blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            blitInfo.regionCount = 1;
-            blitInfo.pRegions = &blit;
-            blitInfo.filter = VK_FILTER_LINEAR;
-
-            vkCmdBlitImage2(commandBuffer, &blitInfo);
-
-            barrier2.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier2.newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-            barrier2.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-            barrier2.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-            barrier2.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-            barrier2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-
-            vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
-            if (width > 1) width /= 2;
-        }
-
-        barrier2.subresourceRange.baseMipLevel = mipLevels - 1;
+    for (uint32_t i = 1; i < mipLevels; i++) {
+        barrier2.subresourceRange.baseMipLevel = i - 1;
         barrier2.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier2.newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+        barrier2.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         barrier2.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier2.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+        barrier2.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        barrier2.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+
+        vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+
+        VkImageBlit2 blit{};
+        blit.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
+        blit.srcOffsets[0] = { 0, 0, 0 };
+        blit.srcOffsets[1] = { width, width, 1 };
+        blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.mipLevel = i - 1;
+        blit.srcSubresource.baseArrayLayer = 0;
+        blit.srcSubresource.layerCount = 6;
+        blit.dstOffsets[0] = { 0, 0, 0 };
+        blit.dstOffsets[1] = { width > 1 ? width / 2 : 1, width > 1 ? width / 2 : 1, 1 };
+        blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.mipLevel = i;
+        blit.dstSubresource.baseArrayLayer = 0;
+        blit.dstSubresource.layerCount = 6;
+
+        VkBlitImageInfo2 blitInfo{};
+        blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
+        blitInfo.dstImage = image;
+        blitInfo.srcImage = image;
+        blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        blitInfo.regionCount = 1;
+        blitInfo.pRegions = &blit;
+        blitInfo.filter = VK_FILTER_LINEAR;
+
+        vkCmdBlitImage2(commandBuffer, &blitInfo);
+
+        barrier2.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier2.newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+        barrier2.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
         barrier2.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
         barrier2.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
         barrier2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 
         vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+        if (width > 1) width /= 2;
     }
+
+    barrier2.subresourceRange.baseMipLevel = mipLevels - 1;
+    barrier2.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier2.newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+    barrier2.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    barrier2.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+    barrier2.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+    barrier2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+
+    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
 Image::~Image()
