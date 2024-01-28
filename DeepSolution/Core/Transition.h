@@ -10,7 +10,7 @@ namespace Transition
 	void ColorAttachmentToTransferDestination(VkImage image, VkCommandBuffer commandBuffer);
 	void TransferDestinationToPresentable(VkImage image, VkCommandBuffer commandBuffer);
 	void TransferDestinationToShaderReadOptimal(VkImage image, VkCommandBuffer commandBuffer, const VkImageSubresourceRange& range);
-	void ColorAttachmentToShaderReadOptimal(VkImage image, VkCommandBuffer commandBuffer);
+	void ColorAttachmentToShaderReadOptimal(VkImage image, VkCommandBuffer commandBuffer, const VkImageSubresourceRange& range);
 	void ColorAttachmentToTransferSource(VkImage image, VkCommandBuffer commandBuffer);
 	void ColorAttachmentToPresentable(VkImage image, VkCommandBuffer commandBuffer);
 	void ShaderReadOptimalToColorAttachment(VkImage image, VkCommandBuffer commandBuffer);

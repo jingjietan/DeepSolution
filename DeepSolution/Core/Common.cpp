@@ -176,6 +176,14 @@ VkPipelineDepthStencilStateCreateInfo CreateInfo::DepthStencilState()
 	return depthStencilState;
 }
 
+VkPipelineColorBlendAttachmentState CreateInfo::NoBlend()
+{
+	VkPipelineColorBlendAttachmentState attachment{};
+	attachment.blendEnable = VK_FALSE;
+	attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	return attachment;
+}
+
 VkPipelineColorBlendAttachmentState CreateInfo::ColorBlendAttachment()
 {
 	VkPipelineColorBlendAttachmentState attachment{}; // Normal Color Blending

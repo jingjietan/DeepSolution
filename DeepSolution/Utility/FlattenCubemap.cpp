@@ -6,107 +6,17 @@
 #include "../Core/Image.h"
 #include "../Core/Transition.h"
 #include "../Core/Buffer.h"
+#include "../Core/DescriptorWrite.h"
+#include "../Core/Cube.h"
 
 #include <array>
 #include <glm/glm.hpp>
-#include "../Core/DescriptorWrite.h"
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
-namespace {
-	struct BasicVertex {
-		glm::vec3 position;
-		glm::vec3 normal;
-		glm::vec2 uv;
 
-		VkVertexInputBindingDescription static BindingDescription()
-		{
-			VkVertexInputBindingDescription bd{};
-			bd.binding = 0;
-			bd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-			bd.stride = sizeof(BasicVertex);
-			return bd;
-		}
-		std::array<VkVertexInputAttributeDescription, 3> static AttributesDescription()
-		{
-			std::array<VkVertexInputAttributeDescription, 3> ats{};
-			ats[0].binding = 0;
-			ats[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-			ats[0].location = 0;
-			ats[0].offset = offsetof(BasicVertex, position);
-			ats[1].binding = 0;
-			ats[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-			ats[1].location = 1;
-			ats[1].offset = offsetof(BasicVertex, normal);
-			ats[2].binding = 0;
-			ats[2].format = VK_FORMAT_R32G32_SFLOAT;
-			ats[2].location = 2;
-			return ats;
-		}
-		std::array<VkVertexInputAttributeDescription, 1> static PositionAttributesDescription()
-		{
-			std::array<VkVertexInputAttributeDescription, 1> ats{};
-			ats[0].binding = 0;
-			ats[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-			ats[0].location = 0;
-			ats[0].offset = offsetof(BasicVertex, position);
-			return ats;
-		}
-	};
-
-	std::vector<BasicVertex> cubeVertices = {
-			{{ -1.0f, -1.0f, -1.0f}, {0.0f,  0.0f, -1.0f}, {0.0f, 0.0f}}, // bottom-left
-			{{1.0f,  1.0f, -1.0f}, {0.0f,  0.0f, -1.0f}, {1.0f, 1.0f}}, // top-right
-			{{1.0f, -1.0f, -1.0f}, {0.0f,  0.0f, -1.0f}, {1.0f, 0.0f}}, // bottom-right         
-			{{1.0f,  1.0f, -1.0f}, {0.0f,  0.0f, -1.0f}, {1.0f, 1.0f}}, // top-right
-			{{ -1.0f, -1.0f, -1.0f}, {0.0f,  0.0f, -1.0f}, {0.0f, 0.0f}}, // bottom-left
-			{{ -1.0f,  1.0f, -1.0f}, {0.0f,  0.0f, -1.0f}, {0.0f, 1.0f}}, // top-left
-			// front face
-			{{-1.0f, -1.0f,  1.0f}, {0.0f,  0.0f,  1.0f}, {0.0f, 0.0f}}, // bottom-left
-			{{1.0f, -1.0f,  1.0f}, {0.0f,  0.0f,  1.0f}, {1.0f, 0.0f}}, // bottom-right
-			{{1.0f,  1.0f,  1.0f}, {0.0f,  0.0f,  1.0f}, {1.0f, 1.0f}}, // top-right
-			{{1.0f,  1.0f,  1.0f}, {0.0f,  0.0f,  1.0f}, {1.0f, 1.0f}}, // top-right
-			{{-1.0f,  1.0f,  1.0f}, {0.0f,  0.0f,  1.0f}, {0.0f, 1.0f}}, // top-left
-			{{-1.0f, -1.0f,  1.0f}, {0.0f,  0.0f,  1.0f}, {0.0f, 0.0f}}, // bottom-left
-			// left face
-			
-			{{-1.0f,  1.0f,  1.0f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 0.0f}}, // top-right
-			{{-1.0f,  1.0f, -1.0f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 1.0f}}, // top-left
-			{{-1.0f, -1.0f, -1.0f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 1.0f}}, // bottom-left
-			{{-1.0f, -1.0f, -1.0f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 1.0f}}, // bottom-left
-			{{-1.0f, -1.0f,  1.0f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 0.0f}}, // bottom-right
-			{{-1.0f,  1.0f,  1.0f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 0.0f}}, // top-right
-								 								  
-			// // right face
-			{{1.0f,  1.0f,  1.0f},  {1.0f,  0.0f,  0.0f}, {1.0f, 0.0f}}, // top-left
-			{{1.0f, -1.0f, -1.0f},  {1.0f,  0.0f,  0.0f}, {0.0f, 1.0f}}, // bottom-right
-			{{1.0f,  1.0f, -1.0f},  {1.0f,  0.0f,  0.0f}, {1.0f, 1.0f}}, // top-right         
-			{{1.0f, -1.0f, -1.0f},  {1.0f,  0.0f,  0.0f}, {0.0f, 1.0f}}, // bottom-right
-			{{1.0f,  1.0f,  1.0f},  {1.0f,  0.0f,  0.0f}, {1.0f, 0.0f}}, // top-left
-			{{1.0f, -1.0f,  1.0f},  {1.0f,  0.0f,  0.0f}, {0.0f, 0.0f}}, // bottom-left     
-			// bottom face								  
-			{{-1.0f, -1.0f, -1.0f}, { 0.0f, -1.0f,  0.0f},{ 0.0f, 1.0f}}, // top-right
-			{{1.0f, -1.0f, -1.0f }, { 0.0f, -1.0f,  0.0f},{ 1.0f, 1.0f}}, // top-left
-			{{1.0f, -1.0f,  1.0f }, { 0.0f, -1.0f,  0.0f},{ 1.0f, 0.0f}}, // bottom-left
-			{{1.0f, -1.0f,  1.0f }, { 0.0f, -1.0f,  0.0f},{ 1.0f, 0.0f}}, // bottom-left
-			{{-1.0f, -1.0f,  1.0f}, { 0.0f, -1.0f,  0.0f},{ 0.0f, 0.0f}}, // bottom-right
-			{{-1.0f, -1.0f, -1.0f}, { 0.0f, -1.0f,  0.0f},{ 0.0f, 1.0f}}, // top-right
-			// top face												  
-			{{-1.0f,  1.0f, -1.0f}, { 0.0f,  1.0f,  0.0f},{ 0.0f, 1.0f}}, // top-left
-			{{1.0f,  1.0f , 1.0f }, { 0.0f,  1.0f,  0.0f},{ 1.0f, 0.0f}}, // bottom-right
-			{{ 1.0f,  1.0f, -1.0f}, { 0.0f,  1.0f,  0.0f},{ 1.0f, 1.0f}}, // top-right     
-			{{1.0f,  1.0f,  1.0f }, { 0.0f,  1.0f,  0.0f},{ 1.0f, 0.0f}}, // bottom-right
-			{{-1.0f,  1.0f, -1.0f}, { 0.0f,  1.0f,  0.0f},{ 0.0f, 1.0f}}, // top-left
-			{{-1.0f,  1.0f,  1.0f}, { 0.0f,  1.0f,  0.0f},{ 0.0f, 0.0f}}  // bottom-left   
-	};
-}
-
-FlattenCubemap::FlattenCubemap(Device& device): device_(device)
+FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cubeBuffer): device_(device), cubeBuffer(cubeBuffer)
 {
-	const auto quadSize = sizeof(BasicVertex) * cubeVertices.size();
-	quadBuffer = std::make_unique<Buffer>(device_, quadSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	quadBuffer->upload(cubeVertices.data(), quadSize);
-
 	uniformBuffer = std::make_unique<Buffer>(device_, 7 * sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 	
 	ShaderReflect reflect;
@@ -181,8 +91,9 @@ FlattenCubemap::FlattenCubemap(Device& device): device_(device)
 	std::array views{
 		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
 		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
-		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
 		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
+		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
+		
 		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
 		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
 	};
@@ -243,7 +154,7 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, conversionPipeline);
 
 	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &quadBuffer->operator const VkBuffer & (), &offset);
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeBuffer->operator const VkBuffer & (), &offset);
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, conversionLayout, 0, 1, &conversionSet, 0, nullptr);
 
 	vkCmdDraw(commandBuffer, cubeVertices.size(), 1, 0, 0);
@@ -252,7 +163,7 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 
 	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
-	Transition::ColorAttachmentToShaderReadOptimal(img->Get(), commandBuffer);
+	Transition::ColorAttachmentToShaderReadOptimal(img->Get(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6});
 
 	// image + sampler
 	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);

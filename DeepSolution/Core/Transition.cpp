@@ -152,7 +152,7 @@ void Transition::TransferDestinationToShaderReadOptimal(VkImage image, VkCommand
 	vkCmdPipelineBarrier2KHR(commandBuffer, &depedency);
 }
 
-void Transition::ColorAttachmentToShaderReadOptimal(VkImage image, VkCommandBuffer commandBuffer)
+void Transition::ColorAttachmentToShaderReadOptimal(VkImage image, VkCommandBuffer commandBuffer, const VkImageSubresourceRange& range)
 {
 	VkImageMemoryBarrier2 imageBarrier{};
 	imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -165,11 +165,7 @@ void Transition::ColorAttachmentToShaderReadOptimal(VkImage image, VkCommandBuff
 	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	imageBarrier.image = image;
-	imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageBarrier.subresourceRange.baseMipLevel = 0;
-	imageBarrier.subresourceRange.baseArrayLayer = 0;
-	imageBarrier.subresourceRange.levelCount = 1;
-	imageBarrier.subresourceRange.layerCount = 1;
+	imageBarrier.subresourceRange = range;
 
 	VkDependencyInfo depedency{};
 	depedency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;

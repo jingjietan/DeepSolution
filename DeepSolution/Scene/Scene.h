@@ -11,6 +11,7 @@
 #include "../Common/Handle.h"
 #include "../Core/Common.h"
 #include "../Utility/FlattenCubemap.h"
+#include "../Render/Skybox.h"
 
 class Device;
 class Buffer;
@@ -149,7 +150,9 @@ private:
 	uint32_t frameCount_{};
 	uint32_t maxFramesInFlight;
 	//
+	std::shared_ptr<Buffer> cubeBuffer_;
 	std::unique_ptr<InfiniteGrid> infiniteGrid_;
+	std::unique_ptr<Skybox> skybox_;
 
 	std::unique_ptr<FlattenCubemap> flattenCubemap_;
 };

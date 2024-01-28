@@ -5,6 +5,7 @@
 #include "../Core/Shader.h"
 #include "../Core/Image.h"
 #include "../Core/Transition.h"
+#include "../Core/Cube.h"
 
 #include <tiny_gltf.h>
 #include <spdlog/spdlog.h>
@@ -505,9 +506,14 @@ Scene::Scene(Device& device) : device_(device)
 	check(vkCreateDescriptorSetLayout(device.device, &bindlessSetLayoutCI, nullptr, &bindlessSetLayout));
 	setName(device_, bindlessSetLayout, "Bindless Set Layout");
 
-	// Infinite Grid
+	// Rendering techniques
+	const auto cubeSize = sizeof(BasicVertex) * cubeVertices.size();
+	cubeBuffer_ = std::make_unique<Buffer>(device_, cubeSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+	cubeBuffer_->upload(cubeVertices.data(), cubeSize);
+
 	infiniteGrid_ = std::make_unique<InfiniteGrid>(device_, globalSetLayout);
-	flattenCubemap_ = std::make_unique<FlattenCubemap>(device_);
+	flattenCubemap_ = std::make_unique<FlattenCubemap>(device_, cubeBuffer_);
+	skybox_ = std::make_unique<Skybox>(device_, cubeBuffer_);
 
 	// Model Push Constant
 	VkPushConstantRange pushRange{};
@@ -1051,11 +1057,13 @@ void Scene::loadCubeMap(const std::string& path)
 
 		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
 
-		auto ptr = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 512, 512);
+		auto ptr = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 1024, 1024);
+
 		cubeMap_ = std::move(ptr);
 	});
 
 	setName(device_, cubeMap_->Get(), path);
+	skybox_->set(cubeMap_->GetView(), cubeMap_->GetSampler());
 }
 
 /*
@@ -1419,7 +1427,10 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 
 	*/
 
-	infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) });
+	const VkExtent2D extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
+	// infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, extent);
+
+	skybox_->render(commandBuffer, state.camera_->calculateProjection(), state.camera_->calculateView(), colorView, depthView, extent);
 
 	/*
 	Transition::ShaderReadOptimalToColorAttachment(accum->Get(), commandBuffer);

@@ -46,6 +46,7 @@ namespace CreateInfo {
 	VkPipelineRasterizationStateCreateInfo RasterizationState(VkBool32 depthClamp, VkCullModeFlags cullMode, VkFrontFace frontFace);
 	VkPipelineMultisampleStateCreateInfo MultisampleState();
 	VkPipelineDepthStencilStateCreateInfo DepthStencilState();
+	VkPipelineColorBlendAttachmentState NoBlend();
 	VkPipelineColorBlendAttachmentState ColorBlendAttachment();
 	VkPipelineColorBlendStateCreateInfo ColorBlendState(VkPipelineColorBlendAttachmentState* pAttachment, size_t attachmentCount);
 	VkPipelineDynamicStateCreateInfo DynamicState(VkDynamicState* pDynamicState, size_t dynamicStateCount);
