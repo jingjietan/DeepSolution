@@ -726,6 +726,7 @@ void Scene::loadGLTF(const std::string& path)
 		samplerInfo.minFilter = getVkFilter(sampler.minFilter, VK_FILTER_LINEAR);
 		samplerInfo.magFilter = getVkFilter(sampler.magFilter, VK_FILTER_LINEAR);
 		samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+		samplerInfo.maxLod = static_cast<float>(mipLevels);
 		samplerInfo.anisotropyEnable = VK_TRUE;
 		samplerInfo.maxAnisotropy = device_.deviceProperties.limits.maxSamplerAnisotropy;
 		
@@ -1014,7 +1015,7 @@ void Scene::loadCubeMap(const std::string& path)
 	check(data);
 
 	const auto format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	const auto mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(x, y)))) + 1;
+	const auto mipLevels = Image::calculateMaxMiplevels(x, y);
 	const VkImageSubresourceRange range = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT , .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = 1 };
 
 	VkImageCreateInfo imageCI{};
@@ -1033,17 +1034,9 @@ void Scene::loadCubeMap(const std::string& path)
 
 	img->AttachImageView(range);
 
-	VkSamplerCreateInfo samplerInfo{};
-	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-	samplerInfo.minFilter = VK_FILTER_LINEAR;
-	samplerInfo.magFilter = VK_FILTER_LINEAR;
-	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-	samplerInfo.anisotropyEnable = VK_TRUE;
-	samplerInfo.maxAnisotropy = device_.deviceProperties.limits.maxSamplerAnisotropy;
-
+	VkSamplerCreateInfo samplerInfo = 
+		CreateInfo::SamplerCI(mipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
+	
 	img->AttachSampler(samplerInfo);
 
 	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint32_t);
@@ -1058,6 +1051,14 @@ void Scene::loadCubeMap(const std::string& path)
 		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
 
 		auto ptr = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 1024, 1024);
+
+
+		auto cubemapMiplevel = Image::calculateMaxMiplevels(1024, 1024);
+		// Transition::ColorAttachmentToShaderReadOptimal(ptr->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, cubemapMiplevel, 0, 6 });
+
+		Transition::ColorAttachmentToTransferDestination(ptr->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, cubemapMiplevel, 0, 6 });
+
+		Image::generateCubemapMipmaps(ptr->Get(), 1024, cubemapMiplevel, commandBuffer);
 
 		cubeMap_ = std::move(ptr);
 	});

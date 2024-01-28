@@ -105,8 +105,10 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int width, int height)
 {
 	VkExtent2D extent = { uint32_t(width), uint32_t(height) };
-	VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 };
-	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+	auto mipLevels = Image::calculateMaxMiplevels(width, height);
+	VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 6 };
+	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, mipLevels, VK_FORMAT_R32G32B32A32_SFLOAT, 
+		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 	imageCI.arrayLayers = 6; //for cubemap
 	imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	auto img = std::make_unique<Image>(device_, imageCI);
@@ -163,10 +165,8 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 
 	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
-	Transition::ColorAttachmentToShaderReadOptimal(img->Get(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6});
-
 	// image + sampler
-	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
+	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(mipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
 	img->AttachSampler(samplerCI);
 
 	return img;
