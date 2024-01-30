@@ -73,7 +73,7 @@ void CreateInfo::performOneTimeAction(VkDevice device, VkQueue queue, VkCommandP
 	submitInfo.pCommandBuffers = &commandBuffer;
 
 	check(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
-	vkQueueWaitIdle(queue);
+	check(vkQueueWaitIdle(queue)); // device lost error is so weird.
 }
 
 VkRenderPass CreateInfo::createRenderPass(VkDevice device, const VkAttachmentDescription2* pAttachments, uint32_t attachmentCount, const VkSubpassDescription2* pSubpass, uint32_t subpassCount, const VkSubpassDependency2* pDependency, uint32_t dependencyCount)

@@ -1,4 +1,4 @@
-#include "FlattenCubemap.h"
+#include "PrefilterCubemap.h"
 
 #include "../Core/Common.h"
 #include "../Core/Shader.h"
@@ -8,30 +8,26 @@
 #include "../Core/Buffer.h"
 #include "../Core/DescriptorWrite.h"
 #include "../Core/Cube.h"
-
-#include <array>
-#include <glm/glm.hpp>
-#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 
-
-FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cubeBuffer): device_(device), cubeBuffer(cubeBuffer)
+PrefilterCubemap::PrefilterCubemap(Device& device, const std::shared_ptr<Buffer>& buffer) : device_(device), cubeBuffer(buffer)
 {
-	uniformBuffer = std::make_unique<Buffer>(device_, 7 * sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	
+	uniformBuffer = std::make_unique<Buffer>(device_, 7 * sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
 	ShaderReflect reflect;
-	reflect.add("Shaders/FlattenCubemap.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
-	reflect.add("Shaders/FlattenCubemap.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+	reflect.add("Shaders/Irradiance.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+	reflect.add("Shaders/Prefilter.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	conversionDescLayout = reflect.retrieveDescriptorSetLayout(device_.device)[0];
-	conversionPool = reflect.retrieveDescriptorPool(device_.device);
-	conversionSet = reflect.retrieveSet(device_.device, conversionPool, conversionDescLayout)[0];
-	conversionLayout = reflect.retrievePipelineLayout(device_.device, { conversionDescLayout });
-	auto conversionStages = reflect.retrieveShaderModule(device_.device);
+	prefilterDescLayout = reflect.retrieveDescriptorSetLayout(device_.device)[0];
+	prefilterPool = reflect.retrieveDescriptorPool(device_.device);
+	prefilterSet = reflect.retrieveSet(device_.device, prefilterPool, prefilterDescLayout)[0];
+	prefilterLayout = reflect.retrievePipelineLayout(device_.device, { prefilterDescLayout });
+	auto prefilterStages = reflect.retrieveShaderModule(device_.device);
 
-	conversionPipeline = [&]() {
+	prefilterPipeline = [&]() {
 		VkPipeline pipeline;
-		const auto stages = ShaderReflect::getStages(conversionStages);
+		const auto stages = reflect.getStages(prefilterStages);
 
 		auto vertexBinding = BasicVertex::BindingDescription();
 		auto vertexAttributes = BasicVertex::PositionAttributesDescription();
@@ -73,7 +69,7 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 		pipelineCreateInfo.pDepthStencilState = &depthStencilState;
 		pipelineCreateInfo.pColorBlendState = &colorBlendState;
 		pipelineCreateInfo.pDynamicState = &dynamicState;
-		pipelineCreateInfo.layout = conversionLayout;
+		pipelineCreateInfo.layout = prefilterLayout;
 
 		Connect(pipelineCreateInfo, rendering);
 
@@ -83,7 +79,7 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 	}();
 
 	DescriptorWrite writer;
-	writer.add(conversionSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer & (), 0, VK_WHOLE_SIZE);
+	writer.add(prefilterSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer & (), 0, VK_WHOLE_SIZE);
 	writer.write(device_.device);
 
 	const auto projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.f);
@@ -98,37 +94,34 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 	};
 	uniformBuffer->upload(views.data(), views.size() * sizeof(glm::mat4), sizeof(glm::mat4));
 
-	ShaderReflect::deleteModules(device_.device, conversionStages);
+	ShaderReflect::deleteModules(device_.device, prefilterStages);
 }
 
-std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int width, int height)
+std::unique_ptr<Image> PrefilterCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
 {
-	VkExtent2D extent = { uint32_t(width), uint32_t(height) };
-	auto mipLevels = Image::calculateMaxMiplevels(width, height);
-	VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 6 };
-	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, mipLevels, VK_FORMAT_R32G32B32A32_SFLOAT, 
+	VkExtent2D extent = { uint32_t(dim), uint32_t(dim) };
+	const uint32_t maxMipLevels = 5;
+
+	VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, maxMipLevels, 0, 6 };
+	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, maxMipLevels, VK_FORMAT_R32G32B32A32_SFLOAT,
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 	imageCI.arrayLayers = 6; //for cubemap
 	imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	auto img = std::make_unique<Image>(device_, imageCI);
-	img->AttachCubeMapImageView(range);
 
-	// transition...
 	Transition::UndefinedToColorAttachment(img->Get(), commandBuffer, range);
 
-	// write to descriptor
 	DescriptorWrite writer;
-	writer.add(conversionSet, 1, 0, ImageType::CombinedSampler, 1, sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.add(prefilterSet, 1, 0, ImageType::CombinedSampler, 1, sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	writer.write(device_.device);
 
 	VkDebugUtilsLabelEXT label{};
 	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-	label.pLabelName = "Flatten";
+	label.pLabelName = "Prefilter";
 	vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
 
 	VkRenderingAttachmentInfo colorAttachment{};
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAttachment.imageView = img->GetView();
 	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -137,45 +130,74 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 	VkRenderingInfo renderInfo{};
 	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 	renderInfo.renderArea.offset = { 0, 0 };
-	renderInfo.renderArea.extent = extent;
 	renderInfo.layerCount = 1;
 	renderInfo.colorAttachmentCount = 1;
 	renderInfo.pColorAttachments = &colorAttachment;
 	renderInfo.viewMask = 0b111111; // multiview 6 times.
 
-	vkCmdBeginRendering(commandBuffer, &renderInfo);
+	for (uint32_t mipLevel = 0; mipLevel < maxMipLevels; mipLevel++)
+	{
+		const int mippedDim = dim * std::pow(0.5, mipLevel);
+		const auto imageView = [&]() {
+			VkImageView iv;
+			VkImageViewCreateInfo imageViewCI{};
+			imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			imageViewCI.image = img->Get();
+			imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+			imageViewCI.format = img->GetFormat();
+			imageViewCI.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, mipLevel, 1, 0, 6 };
+			check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &iv));
+			return iv;
+		}();
+		cleanupBin.push_back(imageView);
 
-	VkViewport viewport = CreateInfo::Viewport(extent);
-	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+		colorAttachment.imageView = imageView;
+		renderInfo.renderArea.extent.width = uint32_t(mippedDim);
+		renderInfo.renderArea.extent.height = uint32_t(mippedDim);
+		vkCmdBeginRendering(commandBuffer, &renderInfo);
 
-	VkRect2D scissor{};
-	scissor.extent = extent;
-	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+		VkRect2D scissor{};
+		scissor.extent = { uint32_t(mippedDim), uint32_t(mippedDim) };
+		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, conversionPipeline);
+		VkViewport viewport = CreateInfo::Viewport(extent);
+		viewport.width = static_cast<float>(mippedDim);
+		viewport.height = static_cast<float>(mippedDim);
+		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
-	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeBuffer->operator const VkBuffer & (), &offset);
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, conversionLayout, 0, 1, &conversionSet, 0, nullptr);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, prefilterPipeline);
 
-	vkCmdDraw(commandBuffer, cubeVertices.size(), 1, 0, 0);
+		VkDeviceSize offset = 0;
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeBuffer->operator const VkBuffer & (), &offset);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, prefilterLayout, 0, 1, &prefilterSet, 0, nullptr);
 
-	vkCmdEndRendering(commandBuffer);
+		float roughness = float(mipLevel) / float(maxMipLevels - 1);
+		vkCmdPushConstants(commandBuffer, prefilterLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &roughness);
+
+		vkCmdDraw(commandBuffer, cubeVertices.size(), 1, 0, 0);
+
+		vkCmdEndRendering(commandBuffer);
+	}
 
 	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
 	// image + sampler
-	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(mipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
+	img->AttachCubeMapImageView(range);
+	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(maxMipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
 	img->AttachSampler(samplerCI);
 
 	return img;
 }
 
-FlattenCubemap::~FlattenCubemap()
+PrefilterCubemap::~PrefilterCubemap()
 {
-	vkDestroyPipelineLayout(device_.device, conversionLayout, nullptr);
-	vkDestroyPipeline(device_.device, conversionPipeline, nullptr);
-	vkDestroyDescriptorSetLayout(device_.device, conversionDescLayout, nullptr);
-	vkDestroyDescriptorPool(device_.device, conversionPool, nullptr);
+	vkDestroyDescriptorSetLayout(device_.device, prefilterDescLayout, nullptr);
+	vkDestroyDescriptorPool(device_.device, prefilterPool, nullptr);
+	vkDestroyPipelineLayout(device_.device, prefilterLayout, nullptr);
+	vkDestroyPipeline(device_.device, prefilterPipeline, nullptr);
 
+	for (const auto& imageView : cleanupBin)
+	{
+		vkDestroyImageView(device_.device, imageView, nullptr);
+	}
 }

@@ -1,4 +1,4 @@
-#include "FlattenCubemap.h"
+#include "IrradianceCubemap.h"
 
 #include "../Core/Common.h"
 #include "../Core/Shader.h"
@@ -8,30 +8,26 @@
 #include "../Core/Buffer.h"
 #include "../Core/DescriptorWrite.h"
 #include "../Core/Cube.h"
-
-#include <array>
-#include <glm/glm.hpp>
-#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 
-
-FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cubeBuffer): device_(device), cubeBuffer(cubeBuffer)
+IrradianceCubemap::IrradianceCubemap(Device& device, const std::shared_ptr<Buffer>& buffer): device_(device), cubeBuffer(buffer)
 {
-	uniformBuffer = std::make_unique<Buffer>(device_, 7 * sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	
+	uniformBuffer = std::make_unique<Buffer>(device_, 7 * sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
 	ShaderReflect reflect;
-	reflect.add("Shaders/FlattenCubemap.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
-	reflect.add("Shaders/FlattenCubemap.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+	reflect.add("Shaders/Irradiance.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+	reflect.add("Shaders/Irradiance.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	conversionDescLayout = reflect.retrieveDescriptorSetLayout(device_.device)[0];
-	conversionPool = reflect.retrieveDescriptorPool(device_.device);
-	conversionSet = reflect.retrieveSet(device_.device, conversionPool, conversionDescLayout)[0];
-	conversionLayout = reflect.retrievePipelineLayout(device_.device, { conversionDescLayout });
-	auto conversionStages = reflect.retrieveShaderModule(device_.device);
+	irradianceDescLayout = reflect.retrieveDescriptorSetLayout(device_.device)[0];
+	irradiancePool = reflect.retrieveDescriptorPool(device_.device);
+	irradianceSet = reflect.retrieveSet(device_.device, irradiancePool, irradianceDescLayout)[0];
+	irradianceLayout = reflect.retrievePipelineLayout(device_.device, { irradianceDescLayout });
+	auto irradianceStages = reflect.retrieveShaderModule(device_.device);
 
-	conversionPipeline = [&]() {
+	irradiancePipeline = [&]() {
 		VkPipeline pipeline;
-		const auto stages = ShaderReflect::getStages(conversionStages);
+		const auto stages = reflect.getStages(irradianceStages);
 
 		auto vertexBinding = BasicVertex::BindingDescription();
 		auto vertexAttributes = BasicVertex::PositionAttributesDescription();
@@ -50,8 +46,9 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 		auto multisampleState = CreateInfo::MultisampleState();
 
 		auto depthStencilState = CreateInfo::DepthStencilState();
-
+	
 		auto attachment = CreateInfo::ColorBlendAttachment();
+		
 		auto colorBlendState = CreateInfo::ColorBlendState(&attachment, 1);
 
 		std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
@@ -73,17 +70,18 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 		pipelineCreateInfo.pDepthStencilState = &depthStencilState;
 		pipelineCreateInfo.pColorBlendState = &colorBlendState;
 		pipelineCreateInfo.pDynamicState = &dynamicState;
-		pipelineCreateInfo.layout = conversionLayout;
+		pipelineCreateInfo.layout = irradianceLayout;
 
 		Connect(pipelineCreateInfo, rendering);
 
 		check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
 
+
 		return pipeline;
 	}();
 
 	DescriptorWrite writer;
-	writer.add(conversionSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer & (), 0, VK_WHOLE_SIZE);
+	writer.add(irradianceSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer &(), 0, VK_WHOLE_SIZE);
 	writer.write(device_.device);
 
 	const auto projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.f);
@@ -98,32 +96,29 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 	};
 	uniformBuffer->upload(views.data(), views.size() * sizeof(glm::mat4), sizeof(glm::mat4));
 
-	ShaderReflect::deleteModules(device_.device, conversionStages);
+	ShaderReflect::deleteModules(device_.device, irradianceStages);
 }
 
-std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int width, int height)
+std::unique_ptr<Image> IrradianceCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
 {
-	VkExtent2D extent = { uint32_t(width), uint32_t(height) };
-	auto mipLevels = Image::calculateMaxMiplevels(width, height);
-	VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 6 };
-	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, mipLevels, VK_FORMAT_R32G32B32A32_SFLOAT, 
+	VkExtent2D extent = { uint32_t(dim), uint32_t(dim) }; 
+	VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 }; 
+	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, 1, VK_FORMAT_R32G32B32A32_SFLOAT,
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 	imageCI.arrayLayers = 6; //for cubemap
 	imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	auto img = std::make_unique<Image>(device_, imageCI);
 	img->AttachCubeMapImageView(range);
 
-	// transition...
 	Transition::UndefinedToColorAttachment(img->Get(), commandBuffer, range);
 
-	// write to descriptor
 	DescriptorWrite writer;
-	writer.add(conversionSet, 1, 0, ImageType::CombinedSampler, 1, sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.add(irradianceSet, 1, 0, ImageType::CombinedSampler, 1, sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	writer.write(device_.device);
 
 	VkDebugUtilsLabelEXT label{};
 	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-	label.pLabelName = "Flatten";
+	label.pLabelName = "Irradiance";
 	vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
 
 	VkRenderingAttachmentInfo colorAttachment{};
@@ -152,11 +147,11 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 	scissor.extent = extent;
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, conversionPipeline);
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, irradiancePipeline);
 
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeBuffer->operator const VkBuffer & (), &offset);
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, conversionLayout, 0, 1, &conversionSet, 0, nullptr);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, irradianceLayout, 0, 1, &irradianceSet, 0, nullptr);
 
 	vkCmdDraw(commandBuffer, cubeVertices.size(), 1, 0, 0);
 
@@ -165,17 +160,16 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
 	// image + sampler
-	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(mipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
+	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
 	img->AttachSampler(samplerCI);
 
 	return img;
 }
 
-FlattenCubemap::~FlattenCubemap()
+IrradianceCubemap::~IrradianceCubemap()
 {
-	vkDestroyPipelineLayout(device_.device, conversionLayout, nullptr);
-	vkDestroyPipeline(device_.device, conversionPipeline, nullptr);
-	vkDestroyDescriptorSetLayout(device_.device, conversionDescLayout, nullptr);
-	vkDestroyDescriptorPool(device_.device, conversionPool, nullptr);
-
+	vkDestroyDescriptorSetLayout(device_.device, irradianceDescLayout, nullptr);
+	vkDestroyDescriptorPool(device_.device, irradiancePool, nullptr);
+	vkDestroyPipelineLayout(device_.device, irradianceLayout, nullptr);
+	vkDestroyPipeline(device_.device, irradiancePipeline, nullptr);
 }

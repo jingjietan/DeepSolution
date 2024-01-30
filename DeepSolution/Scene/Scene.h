@@ -12,6 +12,8 @@
 #include "../Core/Common.h"
 #include "../Utility/FlattenCubemap.h"
 #include "../Render/Skybox.h"
+#include "../Utility/IrradianceCubemap.h"
+#include "../Utility/PrefilterCubemap.h"
 
 class Device;
 class Buffer;
@@ -138,6 +140,8 @@ private:
 	VkDescriptorSetLayout bindlessSetLayout{};
 
 	std::unique_ptr<Image> cubeMap_{};
+	std::unique_ptr<Image> irradianceMap_{};
+	std::unique_ptr<Image> prefilterMap_{};
 	
 	VkPipelineLayout pipelineLayout_{};
 
@@ -155,4 +159,6 @@ private:
 	std::unique_ptr<Skybox> skybox_;
 
 	std::unique_ptr<FlattenCubemap> flattenCubemap_;
+	std::unique_ptr<IrradianceCubemap> irradianceCubemap_;
+	std::unique_ptr<PrefilterCubemap> prefilterCubemap_;
 };

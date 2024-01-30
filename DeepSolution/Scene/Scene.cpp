@@ -514,6 +514,8 @@ Scene::Scene(Device& device) : device_(device)
 	infiniteGrid_ = std::make_unique<InfiniteGrid>(device_, globalSetLayout);
 	flattenCubemap_ = std::make_unique<FlattenCubemap>(device_, cubeBuffer_);
 	skybox_ = std::make_unique<Skybox>(device_, cubeBuffer_);
+	irradianceCubemap_ = std::make_unique<IrradianceCubemap>(device_, cubeBuffer_);
+	prefilterCubemap_ = std::make_unique<PrefilterCubemap>(device_, cubeBuffer_);
 
 	// Model Push Constant
 	VkPushConstantRange pushRange{};
@@ -1059,6 +1061,14 @@ void Scene::loadCubeMap(const std::string& path)
 		Image::generateCubemapMipmaps(ptr->Get(), 1024, cubemapMiplevel, commandBuffer);
 
 		cubeMap_ = std::move(ptr);
+
+		irradianceMap_ = irradianceCubemap_->convert(commandBuffer, cubeMap_->GetView(), cubeMap_->GetSampler(), 32); // 32 by 32 irradiance
+
+		Transition::ColorAttachmentToShaderReadOptimal(irradianceMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 });
+
+		prefilterMap_ = prefilterCubemap_->convert(commandBuffer, irradianceMap_->GetView(), irradianceMap_->GetSampler(), 128); // 128 by 128 prefilter
+	
+		Transition::ColorAttachmentToShaderReadOptimal(prefilterMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 5, 0, 6 });
 	});
 
 	setName(device_, cubeMap_->Get(), path);

@@ -94,6 +94,11 @@ VkSampler Image::GetSampler() const
 	return sampler_;
 }
 
+VkFormat Image::GetFormat() const
+{
+    return format_;
+}
+
 uint32_t Image::calculateMaxMiplevels(int width, int height)
 {
     return static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;

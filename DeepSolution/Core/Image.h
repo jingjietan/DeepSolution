@@ -21,6 +21,7 @@ public:
 	VkImage Get() const;
 	VkImageView GetView() const;
 	VkSampler GetSampler() const;
+	VkFormat GetFormat() const;
 
 	static uint32_t calculateMaxMiplevels(int width, int height);
 	/**
