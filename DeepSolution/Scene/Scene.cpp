@@ -14,6 +14,7 @@
 #include <volk.h>
 #include "../Light.h"
 #include <stb_image.h>
+#include "../Core/DescriptorWrite.h"
 
 namespace {
 	template<class T>
@@ -455,6 +456,34 @@ Scene::Scene(Device& device) : device_(device)
 	check(vkCreateDescriptorSetLayout(device.device, &bindlessSetLayoutCI, nullptr, &bindlessSetLayout));
 	setName(device_, bindlessSetLayout, "Bindless Set Layout");
 
+	// IBR set
+	VkDescriptorSetLayoutBinding ibrSetBinding0{};
+	ibrSetBinding0.binding = 0;
+	ibrSetBinding0.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	ibrSetBinding0.descriptorCount = 1;
+	ibrSetBinding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutBinding ibrSetBinding1{};
+	ibrSetBinding1.binding = 1;
+	ibrSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	ibrSetBinding1.descriptorCount = 1;
+	ibrSetBinding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutBinding ibrSetBinding2{};
+	ibrSetBinding2.binding = 2;
+	ibrSetBinding2.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	ibrSetBinding2.descriptorCount = 1;
+	ibrSetBinding2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	std::array ibrBindings{ ibrSetBinding0, ibrSetBinding1, ibrSetBinding2 };
+
+	VkDescriptorSetLayoutCreateInfo ibrSetLayoutCI{};
+	ibrSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	ibrSetLayoutCI.bindingCount = static_cast<uint32_t>(ibrBindings.size());
+	ibrSetLayoutCI.pBindings = ibrBindings.data();
+	check(vkCreateDescriptorSetLayout(device.device, &ibrSetLayoutCI, nullptr, &ibrSetLayout));
+	setName(device_, ibrSetLayout, "IBR Set Layout");
+
 	// Rendering techniques
 	const auto cubeSize = sizeof(BasicVertex) * cubeVertices.size();
 	cubeBuffer_ = std::make_unique<Buffer>(device_, cubeSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
@@ -471,7 +500,7 @@ Scene::Scene(Device& device) : device_(device)
 	pushRange.size = sizeof(PushConstant);
 	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	std::array pipelineSetLayouts{ globalSetLayout, bindlessSetLayout };
+	std::array pipelineSetLayouts{ globalSetLayout, bindlessSetLayout, ibrSetLayout };
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCI{};
 	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -506,6 +535,18 @@ Scene::Scene(Device& device) : device_(device)
 	check(vkCreateDescriptorPool(device.device, &bindlessPoolCI, nullptr, &bindlessPool));
 	setName(device_, bindlessPool, "Bindless Pool");
 
+	VkDescriptorPoolSize ibrPoolSize{};
+	ibrPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	ibrPoolSize.descriptorCount = 3;
+
+	VkDescriptorPoolCreateInfo ibrPoolCI{};
+	ibrPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	ibrPoolCI.maxSets = 1;
+	ibrPoolCI.poolSizeCount = 1;
+	ibrPoolCI.pPoolSizes = &ibrPoolSize;
+	check(vkCreateDescriptorPool(device.device, &ibrPoolCI, nullptr, &ibrPool));
+	setName(device_, ibrPool, "IBR Pool");
+
 	// Sets
 	std::vector<VkDescriptorSetLayout> globalLayouts{ maxFramesInFlight, globalSetLayout };
 	globalSets_.resize(maxFramesInFlight);
@@ -535,8 +576,13 @@ Scene::Scene(Device& device) : device_(device)
 	check(vkAllocateDescriptorSets(device.device, &bindlessAllocateInfo, &bindlessSet_));
 	setName(device_, bindlessSet_, "Bindless Set");
 
-	// Set is done! Time to write.
-	initialiseDefaultTextures();
+	VkDescriptorSetAllocateInfo ibrAllocateInfo{};
+	ibrAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	ibrAllocateInfo.descriptorPool = ibrPool;
+	ibrAllocateInfo.descriptorSetCount = 1;
+	ibrAllocateInfo.pSetLayouts = &ibrSetLayout;
+	check(vkAllocateDescriptorSets(device.device, &ibrAllocateInfo, &ibrSet));
+	setName(device_, ibrSet, "IBR Set");
 
 	globalUniformBuffers_.resize(maxFramesInFlight);
 	for (size_t i = 0; i < maxFramesInFlight; i++)
@@ -1001,15 +1047,13 @@ void Scene::loadCubeMap(const std::string& path)
 
 		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
 
-		auto ptr = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 1024, 1024);
+		cubeMap_ = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 1024, 1024);
 
 		auto cubemapMiplevel = Image::calculateMaxMiplevels(1024, 1024);
 	
-		Transition::ColorAttachmentToTransferDestination(ptr->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, cubemapMiplevel, 0, 6 });
+		Transition::ColorAttachmentToTransferDestination(cubeMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, cubemapMiplevel, 0, 6 });
 
-		Image::generateCubemapMipmaps(ptr->Get(), 1024, cubemapMiplevel, commandBuffer);
-
-		cubeMap_ = std::move(ptr);
+		Image::generateCubemapMipmaps(cubeMap_->Get(), 1024, cubemapMiplevel, commandBuffer);
 
 		irradianceMap_ = irradianceCubemap_->convert(commandBuffer, cubeMap_->GetView(), cubeMap_->GetSampler(), 32); // 32 by 32 irradiance
 
@@ -1026,6 +1070,13 @@ void Scene::loadCubeMap(const std::string& path)
 
 	setName(device_, cubeMap_->Get(), path);
 	skybox_->set(cubeMap_->GetView(), cubeMap_->GetSampler());
+
+	DescriptorWrite writer;
+	writer.add(ibrSet, 0, 0, ImageType::CombinedSampler, 1, irradianceMap_->GetSampler(), irradianceMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.add(ibrSet, 1, 0, ImageType::CombinedSampler, 1, prefilterMap_->GetSampler(), prefilterMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.add(ibrSet, 2, 0, ImageType::CombinedSampler, 1, brdfMap_->GetSampler(), brdfMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.write(device_.device);
+
 }
 
 /*
@@ -1247,6 +1298,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 		vkCmdBindIndexBuffer(commandBuffer, indexBuffer->operator const VkBuffer& (), 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &globalSets_[frameCount_], 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 1, 1, &bindlessSet_, 0, nullptr);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 2, 1, &ibrSet, 0, nullptr);
 
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, opaqueGroup[0].meshes[0].pipeline);
 		vkCmdDrawIndexedIndirect(commandBuffer, indirectBuffer->operator const VkBuffer& (), 0, commands.size(), sizeof(VkDrawIndexedIndirectCommand));
@@ -1441,11 +1493,13 @@ Scene::~Scene()
 
 	vkDestroyDescriptorPool(device_.device, globalPool_, nullptr);
 	vkDestroyDescriptorPool(device_.device, bindlessPool, nullptr);
+	vkDestroyDescriptorPool(device_.device, ibrPool, nullptr);
 
 	vkDestroyDescriptorSetLayout(device_.device, globalSetLayout, nullptr);
 	vkDestroyDescriptorSetLayout(device_.device, bindlessSetLayout, nullptr);
+	vkDestroyDescriptorSetLayout(device_.device, ibrSetLayout, nullptr);
 
-	vkDestroyPipelineLayout(device_.device, pipelineLayout_, nullptr);
+;	vkDestroyPipelineLayout(device_.device, pipelineLayout_, nullptr);
 
 	vkDestroyPipeline(device_.device, compositingPipeline, nullptr);
 	vkDestroyPipelineLayout(device_.device, compositingPipelineLayout, nullptr);

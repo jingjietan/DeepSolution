@@ -121,6 +121,10 @@ private:
 	VkPipelineLayout compositingPipelineLayout{};
 	VkPipeline compositingPipeline{};
 
+	VkDescriptorSetLayout ibrSetLayout{};
+	VkDescriptorPool ibrPool{};
+	VkDescriptorSet ibrSet{};
+
 	std::unique_ptr<Image> defaultTextures[4];
 	void initialiseDefaultTextures();
 

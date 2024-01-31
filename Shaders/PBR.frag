@@ -24,12 +24,17 @@ layout(std430, set = 0, binding = 2) readonly buffer Lights {
 layout(set = 1, binding = 0) uniform sampler2D defaultTextures[4];
 layout(set = 1, binding = 1) uniform sampler2D textures[];
 
+layout(set = 2, binding = 0) uniform samplerCube irradianceTexture;
+layout(set = 2, binding = 1) uniform samplerCube prefilterTexture;
+layout(set = 2, binding = 2) uniform sampler2D brdfTexture;
+
 // Convenience
 mat3 constructTBN(vec3 normal, vec4 tangent);
 
 float DistributionGGX(vec3 N, vec3 H, float roughness);
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
 vec3 fresnelSchlick(float costheta, vec3 F0);
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness);
 
 vec3 calculatePointLight(Light light, vec3 fragPos, vec3 viewPos, vec3 V, vec3 N, Material material);
 
@@ -66,21 +71,31 @@ void main() {
     mat3 TBN = constructTBN(fragNormal, fragTangent);
 	vec3 N = normalize(TBN * (2.0 * normal.rgb - 1.0));
 	vec3 V = normalize(viewPos - fragPos);
+	vec3 R = reflect(-V, N); 
 
     vec3 Lo = vec3(0.0);
-	// Per light
-	//Light light;
-	//light.position = vec3(3, 1, 0);
+
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, material.color.rgb, material.metallic);
 
 	for (int i = 0; i < lightCount; i++)
 	{
 		Lo += calculatePointLight(lights[i], fragPos, viewPos, V, N, material);
 	}
-	
-	// Lo += calculatePointLight(light, fragPos, viewPos, V, N, material);
-	// ---- 
 
-	vec3 ambient = vec3(0.03) * material.color.xyz;
+	vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, material.roughness);
+	vec3 kS = F;
+	vec3 kD = 1.0 - kS;
+	kD *= 1.0 - material.metallic;
+	vec3 irradiance = texture(irradianceTexture, N).rgb;
+	vec3 diffuse = irradiance * material.color.rgb;
+
+	const float MAX_REFLECTION_LOD = 4.0;
+	vec3 prefilteredColor = textureLod(prefilterTexture, R, material.roughness * MAX_REFLECTION_LOD).rgb;
+	vec2 brdf = texture(brdfTexture, vec2(max(dot(N, V), 0.0), material.roughness)).rg;
+	vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
+
+	vec3 ambient = (kD * diffuse + specular);
 
     outColor = vec4(ambient + Lo, 1.0);
 }
@@ -126,8 +141,13 @@ mat3 constructTBN(vec3 normal, vec4 tangent) {
 	vec3 T = normalize(tangent.xyz);
 	vec3 B = cross(T, N) * tangent.w;
 	T = (T - dot(T, N) * N);
-	return mat3(T, B, N);
+	return mat3(T,B, N);
 }
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+} 
 
 vec3 calculatePointLight(Light light, vec3 fragPos, vec3 viewPos, vec3 V, vec3 N, Material material) {
 	vec3 L = normalize(light.position - fragPos);
@@ -149,7 +169,7 @@ vec3 calculatePointLight(Light light, vec3 fragPos, vec3 viewPos, vec3 V, vec3 N
 	vec3 specular = numerator/denominator;
 
 	vec3 kS = F;
-	vec3 kD = vec3(1.0) - kS;
+	vec3 kD = 1.0 - kS;
 	kD *= 1.0 - material.metallic;
 
 	float NdotL = max(dot(N, L), 0.0);
