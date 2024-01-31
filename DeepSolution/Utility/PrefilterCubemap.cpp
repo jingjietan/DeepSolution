@@ -156,13 +156,12 @@ std::unique_ptr<Image> PrefilterCubemap::convert(VkCommandBuffer commandBuffer, 
 		renderInfo.renderArea.extent.height = uint32_t(mippedDim);
 		vkCmdBeginRendering(commandBuffer, &renderInfo);
 
+		const VkExtent2D mippedExtent = { uint32_t(mippedDim), uint32_t(mippedDim) };
 		VkRect2D scissor{};
-		scissor.extent = { uint32_t(mippedDim), uint32_t(mippedDim) };
+		scissor.extent = mippedExtent;
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-		VkViewport viewport = CreateInfo::Viewport(extent);
-		viewport.width = static_cast<float>(mippedDim);
-		viewport.height = static_cast<float>(mippedDim);
+		VkViewport viewport = CreateInfo::Viewport(mippedExtent);
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, prefilterPipeline);
