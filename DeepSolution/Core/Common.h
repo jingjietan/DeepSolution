@@ -45,6 +45,7 @@ namespace CreateInfo {
 	VkPipelineViewportStateCreateInfo ViewportState();
 	VkPipelineRasterizationStateCreateInfo RasterizationState(VkBool32 depthClamp, VkCullModeFlags cullMode, VkFrontFace frontFace);
 	VkPipelineMultisampleStateCreateInfo MultisampleState();
+	VkPipelineDepthStencilStateCreateInfo NoDepthState();
 	VkPipelineDepthStencilStateCreateInfo DepthStencilState();
 	VkPipelineColorBlendAttachmentState NoBlend();
 	VkPipelineColorBlendAttachmentState ColorBlendAttachment();

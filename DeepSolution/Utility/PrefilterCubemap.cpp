@@ -11,93 +11,157 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 
-PrefilterCubemap::PrefilterCubemap(Device& device, const std::shared_ptr<Buffer>& buffer) : device_(device), cubeBuffer(buffer)
+PrefilterCubemap::PrefilterCubemap(Device& device, const std::shared_ptr<Buffer>& buffer) 
+	: device_(device), cubeBuffer(buffer)
 {
 	uniformBuffer = std::make_unique<Buffer>(device_, 7 * sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
-	ShaderReflect reflect;
-	reflect.add("Shaders/Irradiance.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
-	reflect.add("Shaders/Prefilter.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+	{
+		ShaderReflect reflect;
+		reflect.add("Shaders/Irradiance.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+		reflect.add("Shaders/Prefilter.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	prefilterDescLayout = reflect.retrieveDescriptorSetLayout(device_.device)[0];
-	prefilterPool = reflect.retrieveDescriptorPool(device_.device);
-	prefilterSet = reflect.retrieveSet(device_.device, prefilterPool, prefilterDescLayout)[0];
-	prefilterLayout = reflect.retrievePipelineLayout(device_.device, { prefilterDescLayout });
-	auto prefilterStages = reflect.retrieveShaderModule(device_.device);
+		prefilterDescLayout = reflect.retrieveDescriptorSetLayout(device_.device)[0];
+		prefilterPool = reflect.retrieveDescriptorPool(device_.device);
+		prefilterSet = reflect.retrieveSet(device_.device, prefilterPool, prefilterDescLayout)[0];
+		prefilterLayout = reflect.retrievePipelineLayout(device_.device, { prefilterDescLayout });
+		auto prefilterStages = reflect.retrieveShaderModule(device_.device);
 
-	prefilterPipeline = [&]() {
-		VkPipeline pipeline;
-		const auto stages = reflect.getStages(prefilterStages);
+		prefilterPipeline = [&]() {
+			VkPipeline pipeline;
+			const auto stages = reflect.getStages(prefilterStages);
 
-		auto vertexBinding = BasicVertex::BindingDescription();
-		auto vertexAttributes = BasicVertex::PositionAttributesDescription();
-		auto vertexInputState = CreateInfo::VertexInputState(&vertexBinding, 1, vertexAttributes.data(), vertexAttributes.size());
+			auto vertexBinding = BasicVertex::BindingDescription();
+			auto vertexAttributes = BasicVertex::PositionAttributesDescription();
+			auto vertexInputState = CreateInfo::VertexInputState(&vertexBinding, 1, vertexAttributes.data(), vertexAttributes.size());
 
-		auto inputAssemblyState = CreateInfo::InputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+			auto inputAssemblyState = CreateInfo::InputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
-		auto viewportState = CreateInfo::ViewportState();
+			auto viewportState = CreateInfo::ViewportState();
 
-		auto rasterizationState = CreateInfo::RasterizationState(
-			false,
-			VK_CULL_MODE_NONE,
-			VK_FRONT_FACE_COUNTER_CLOCKWISE
-		);
+			auto rasterizationState = CreateInfo::RasterizationState(
+				false,
+				VK_CULL_MODE_NONE,
+				VK_FRONT_FACE_COUNTER_CLOCKWISE
+			);
 
-		auto multisampleState = CreateInfo::MultisampleState();
+			auto multisampleState = CreateInfo::MultisampleState();
 
-		auto depthStencilState = CreateInfo::DepthStencilState();
+			auto depthStencilState = CreateInfo::NoDepthState();
 
-		auto attachment = CreateInfo::ColorBlendAttachment();
-		auto colorBlendState = CreateInfo::ColorBlendState(&attachment, 1);
+			auto attachment = CreateInfo::NoBlend();
+			auto colorBlendState = CreateInfo::ColorBlendState(&attachment, 1);
 
-		std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-		auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
+			std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+			auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
 
-		VkFormat format = VK_FORMAT_R32G32B32A32_SFLOAT;
-		auto rendering = CreateInfo::Rendering(&format, 1, VK_FORMAT_UNDEFINED);
-		rendering.viewMask = 0b111111;
+			VkFormat format = VK_FORMAT_R32G32B32A32_SFLOAT;
+			auto rendering = CreateInfo::Rendering(&format, 1, VK_FORMAT_UNDEFINED);
+			rendering.viewMask = 0b111111;
 
-		VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-		pipelineCreateInfo.stageCount = static_cast<uint32_t>(stages.size());
-		pipelineCreateInfo.pStages = stages.data();
-		pipelineCreateInfo.pVertexInputState = &vertexInputState;
-		pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
-		pipelineCreateInfo.pTessellationState = nullptr;
-		pipelineCreateInfo.pViewportState = &viewportState;
-		pipelineCreateInfo.pRasterizationState = &rasterizationState;
-		pipelineCreateInfo.pMultisampleState = &multisampleState;
-		pipelineCreateInfo.pDepthStencilState = &depthStencilState;
-		pipelineCreateInfo.pColorBlendState = &colorBlendState;
-		pipelineCreateInfo.pDynamicState = &dynamicState;
-		pipelineCreateInfo.layout = prefilterLayout;
+			VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+			pipelineCreateInfo.stageCount = static_cast<uint32_t>(stages.size());
+			pipelineCreateInfo.pStages = stages.data();
+			pipelineCreateInfo.pVertexInputState = &vertexInputState;
+			pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
+			pipelineCreateInfo.pTessellationState = nullptr;
+			pipelineCreateInfo.pViewportState = &viewportState;
+			pipelineCreateInfo.pRasterizationState = &rasterizationState;
+			pipelineCreateInfo.pMultisampleState = &multisampleState;
+			pipelineCreateInfo.pDepthStencilState = &depthStencilState;
+			pipelineCreateInfo.pColorBlendState = &colorBlendState;
+			pipelineCreateInfo.pDynamicState = &dynamicState;
+			pipelineCreateInfo.layout = prefilterLayout;
 
-		Connect(pipelineCreateInfo, rendering);
+			Connect(pipelineCreateInfo, rendering);
 
-		check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
+			check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
 
-		return pipeline;
-	}();
+			return pipeline;
+			}();
 
-	DescriptorWrite writer;
-	writer.add(prefilterSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer & (), 0, VK_WHOLE_SIZE);
-	writer.write(device_.device);
+		DescriptorWrite writer;
+		writer.add(prefilterSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer & (), 0, VK_WHOLE_SIZE);
+		writer.write(device_.device);
 
-	const auto projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.f);
-	uniformBuffer->upload(&projection, sizeof(projection));
-	std::array views{
-		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
-		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
-		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
-		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
-		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
-		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
-	};
-	uniformBuffer->upload(views.data(), views.size() * sizeof(glm::mat4), sizeof(glm::mat4));
+		const auto projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.f);
+		uniformBuffer->upload(&projection, sizeof(projection));
+		std::array views{
+			glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+			glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+			glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
+			glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
+			glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+			glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
+		};
+		uniformBuffer->upload(views.data(), views.size() * sizeof(glm::mat4), sizeof(glm::mat4));
 
-	ShaderReflect::deleteModules(device_.device, prefilterStages);
+		ShaderReflect::deleteModules(device_.device, prefilterStages);
+	}
+
+	{
+		ShaderReflect reflect;
+		reflect.add("Shaders/BRDF.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+		reflect.add("Shaders/BRDF.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+		brdfLayout = reflect.retrievePipelineLayout(device_.device, {});
+		auto brdfStages = reflect.retrieveShaderModule(device_.device);
+
+		brdfPipeline = [&]() {
+			VkPipeline pipeline;
+			const auto stages = reflect.getStages(brdfStages);
+
+			auto vertexInputState = CreateInfo::VertexInputState(nullptr, 0, nullptr, 0);
+
+			auto inputAssemblyState = CreateInfo::InputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+			auto viewportState = CreateInfo::ViewportState();
+
+			auto rasterizationState = CreateInfo::RasterizationState(
+				false,
+				VK_CULL_MODE_BACK_BIT,
+				VK_FRONT_FACE_COUNTER_CLOCKWISE
+			);
+
+			auto multisampleState = CreateInfo::MultisampleState();
+
+			auto depthStencilState = CreateInfo::NoDepthState();
+
+			auto attachment = CreateInfo::NoBlend();
+			auto colorBlendState = CreateInfo::ColorBlendState(&attachment, 1);
+
+			std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+			auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
+
+			VkFormat format = VK_FORMAT_R16G16_SFLOAT;
+			auto rendering = CreateInfo::Rendering(&format, 1, VK_FORMAT_UNDEFINED);
+
+			VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+			pipelineCreateInfo.stageCount = static_cast<uint32_t>(stages.size());
+			pipelineCreateInfo.pStages = stages.data();
+			pipelineCreateInfo.pVertexInputState = &vertexInputState;
+			pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
+			pipelineCreateInfo.pTessellationState = nullptr;
+			pipelineCreateInfo.pViewportState = &viewportState;
+			pipelineCreateInfo.pRasterizationState = &rasterizationState;
+			pipelineCreateInfo.pMultisampleState = &multisampleState;
+			pipelineCreateInfo.pDepthStencilState = &depthStencilState;
+			pipelineCreateInfo.pColorBlendState = &colorBlendState;
+			pipelineCreateInfo.pDynamicState = &dynamicState;
+			pipelineCreateInfo.layout = brdfLayout;
+
+			Connect(pipelineCreateInfo, rendering);
+
+			check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
+
+			return pipeline;
+		}();
+
+		ShaderReflect::deleteModules(device_.device, brdfStages);
+	}
 }
 
-std::unique_ptr<Image> PrefilterCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
+std::unique_ptr<Image> PrefilterCubemap::prefilter(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
 {
 	VkExtent2D extent = { uint32_t(dim), uint32_t(dim) };
 	const uint32_t maxMipLevels = 5;
@@ -188,8 +252,66 @@ std::unique_ptr<Image> PrefilterCubemap::convert(VkCommandBuffer commandBuffer, 
 	return img;
 }
 
+std::unique_ptr<Image> PrefilterCubemap::precomputerBRDF(VkCommandBuffer commandBuffer, int width, int height)
+{
+	VkExtent2D extent{ uint32_t(width), uint32_t(height) };
+	const VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, 1, VK_FORMAT_R16G16_SFLOAT,
+		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+	auto img = std::make_unique<Image>(device_, imageCI);
+	img->AttachImageView(range);
+
+	Transition::UndefinedToColorAttachment(img->Get(), commandBuffer, range);
+
+	VkDebugUtilsLabelEXT label{};
+	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+	label.pLabelName = "Precompute BRDF";
+	vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
+
+	VkRenderingAttachmentInfo colorAttachment{};
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment.clearValue = { 0.f, 0.f, 0.f, 1.f };
+	colorAttachment.imageView = img->GetView();
+
+	VkRenderingInfo renderInfo{};
+	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderInfo.renderArea.offset = { 0, 0 };
+	renderInfo.renderArea.extent = extent;
+	renderInfo.layerCount = 1;
+	renderInfo.colorAttachmentCount = 1;
+	renderInfo.pColorAttachments = &colorAttachment;
+	
+	vkCmdBeginRendering(commandBuffer, &renderInfo);
+
+	VkRect2D scissor{};
+	scissor.extent = extent;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	VkViewport viewport = CreateInfo::Viewport(extent);
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, brdfPipeline);
+
+	vkCmdDraw(commandBuffer, 3, 1, 0, 0); // bindless quad
+
+	vkCmdEndRendering(commandBuffer);
+	
+	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
+
+	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
+	img->AttachSampler(samplerCI);
+
+	return img;
+}
+
 PrefilterCubemap::~PrefilterCubemap()
 {
+	vkDestroyPipelineLayout(device_.device, brdfLayout, nullptr);
+	vkDestroyPipeline(device_.device, brdfPipeline, nullptr);
+
 	vkDestroyDescriptorSetLayout(device_.device, prefilterDescLayout, nullptr);
 	vkDestroyDescriptorPool(device_.device, prefilterPool, nullptr);
 	vkDestroyPipelineLayout(device_.device, prefilterLayout, nullptr);

@@ -130,50 +130,6 @@ namespace {
 		}
 	};
 
-	struct QuadVertex {
-		glm::vec3 position;
-		glm::vec2 uv; 
-		
-		static VkVertexInputBindingDescription BindingDescription(uint32_t bindingSlot = 0)
-		{
-			VkVertexInputBindingDescription binding{};
-			binding.binding = bindingSlot;
-			binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-			binding.stride = sizeof(QuadVertex);
-			return binding;
-		}
-
-		static std::array<VkVertexInputAttributeDescription, 2> AttributesDescription(uint32_t bindingSlot = 0)
-		{
-			std::array<VkVertexInputAttributeDescription, 2> attributes{};
-			attributes[0].binding = bindingSlot;
-			attributes[0].location = 0;
-			attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-			attributes[0].offset = offsetof(QuadVertex, position);
-			attributes[1].binding = bindingSlot;
-			attributes[1].location = 1;
-			attributes[1].format = VK_FORMAT_R32G32_SFLOAT;
-			attributes[1].offset = offsetof(QuadVertex, uv);
-			return attributes;
-		}
-	};
-
-	std::vector<QuadVertex> quadVertices = {
-		QuadVertex {
-			glm::vec3{1.0f, 1.0f, 1.0f}, glm::vec2{1.0f, 1.0f}
-		},
-		QuadVertex {
-			glm::vec3{1.0f, -1.0f, 1.0f}, glm::vec2{1.0f, 0.0f}
-		},
-		QuadVertex {
-			glm::vec3{-1.0f, -1.0f, 1.0f}, glm::vec2{0.0f, 0.0f}
-		},
-		QuadVertex {
-			glm::vec3{-1.0f, 1.0f, 1.0f}, glm::vec2{0.f, 1.0f}
-		}
-	};
-	std::vector<uint16_t> quadIndices = { 0, 1, 2, 0, 3, 2 };
-
 	enum FormatUsageHint {
 		NO_HINT = 0u, // Use unorm
 		UNORM, // For data encoded in images
@@ -311,11 +267,6 @@ Scene::Scene(Device& device) : device_(device)
 	transparentVertex_ = loadShader(device.device, "Shaders/TransparentPBR.vert.spv");
 	transparentFragment_ = loadShader(device.device, "Shaders/TransparentPBR.frag.spv");
 
-	quadVerticesBuffer = std::make_unique<Buffer>(device, SizeInBytes(quadVertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	quadIndicesBuffer = std::make_unique<Buffer>(device, SizeInBytes(quadIndices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	quadVerticesBuffer->upload(quadVertices.data(), SizeInBytes(quadVertices));
-	quadIndicesBuffer->upload(quadIndices.data(), SizeInBytes(quadIndices));
-
 	// Compositing Pipeline
 	compositingSetLayout = [](VkDevice device) {
 		VkDescriptorSetLayout layout;
@@ -353,9 +304,7 @@ Scene::Scene(Device& device) : device_(device)
 			CreateInfo::ShaderStage(VK_SHADER_STAGE_FRAGMENT_BIT, compositingFrag)
 		};
 
-		auto vertexBinding = QuadVertex::BindingDescription();
-		auto vertexAttributes = QuadVertex::AttributesDescription();
-		auto vertexInputState = CreateInfo::VertexInputState(&vertexBinding, 1, vertexAttributes.data(), vertexAttributes.size());
+		auto vertexInputState = CreateInfo::VertexInputState(nullptr, 0, nullptr, 0);
 
 		auto inputAssemblyState = CreateInfo::InputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
@@ -1066,9 +1015,13 @@ void Scene::loadCubeMap(const std::string& path)
 
 		Transition::ColorAttachmentToShaderReadOptimal(irradianceMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 });
 
-		prefilterMap_ = prefilterCubemap_->convert(commandBuffer, irradianceMap_->GetView(), irradianceMap_->GetSampler(), 128); // 128 by 128 prefilter
+		prefilterMap_ = prefilterCubemap_->prefilter(commandBuffer, irradianceMap_->GetView(), irradianceMap_->GetSampler(), 128); // 128 by 128 prefilter
 	
 		Transition::ColorAttachmentToShaderReadOptimal(prefilterMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 5, 0, 6 });
+
+		brdfMap_ = prefilterCubemap_->precomputerBRDF(commandBuffer, 512, 512);
+
+		Transition::ColorAttachmentToShaderReadOptimal(brdfMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 	});
 
 	setName(device_, cubeMap_->Get(), path);

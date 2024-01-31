@@ -45,9 +45,9 @@ IrradianceCubemap::IrradianceCubemap(Device& device, const std::shared_ptr<Buffe
 
 		auto multisampleState = CreateInfo::MultisampleState();
 
-		auto depthStencilState = CreateInfo::DepthStencilState();
+		auto depthStencilState = CreateInfo::NoDepthState();
 	
-		auto attachment = CreateInfo::ColorBlendAttachment();
+		auto attachment = CreateInfo::NoBlend();
 		
 		auto colorBlendState = CreateInfo::ColorBlendState(&attachment, 1);
 

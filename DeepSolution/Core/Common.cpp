@@ -164,6 +164,13 @@ VkPipelineMultisampleStateCreateInfo CreateInfo::MultisampleState()
 	return multisampleState;
 }
 
+VkPipelineDepthStencilStateCreateInfo CreateInfo::NoDepthState()
+{
+	VkPipelineDepthStencilStateCreateInfo depthStencilState{};
+	depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	return depthStencilState;
+}
+
 VkPipelineDepthStencilStateCreateInfo CreateInfo::DepthStencilState()
 {
 	VkPipelineDepthStencilStateCreateInfo depthStencilState{};

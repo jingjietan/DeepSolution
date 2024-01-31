@@ -115,8 +115,6 @@ private:
 	VkShaderModule transparentVertex_{};
 	VkShaderModule transparentFragment_{};
 
-	std::unique_ptr<Buffer> quadVerticesBuffer;
-	std::unique_ptr<Buffer> quadIndicesBuffer;
 	VkDescriptorPool compositingPool{};
 	VkDescriptorSetLayout compositingSetLayout{};
 	VkDescriptorSet compositingSet{};
@@ -142,6 +140,7 @@ private:
 	std::unique_ptr<Image> cubeMap_{};
 	std::unique_ptr<Image> irradianceMap_{};
 	std::unique_ptr<Image> prefilterMap_{};
+	std::unique_ptr<Image> brdfMap_{};
 	
 	VkPipelineLayout pipelineLayout_{};
 

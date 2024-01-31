@@ -49,9 +49,9 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 
 		auto multisampleState = CreateInfo::MultisampleState();
 
-		auto depthStencilState = CreateInfo::DepthStencilState();
+		auto depthStencilState = CreateInfo::NoDepthState();
 
-		auto attachment = CreateInfo::ColorBlendAttachment();
+		auto attachment = CreateInfo::NoBlend();
 		auto colorBlendState = CreateInfo::ColorBlendState(&attachment, 1);
 
 		std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
