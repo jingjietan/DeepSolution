@@ -235,8 +235,8 @@ Application::Application(int width, int height)
 
 	scene_ = std::make_unique<Scene>(device_);
 
-	scene_->loadCubeMap("assets/rostock_laage_airport_4k.hdr");
-	// scene_->loadCubeMap("assets/metro_noord_4k.hdr");
+	// scene_->loadCubeMap("assets/rostock_laage_airport_4k.hdr");
+	scene_->loadCubeMap("assets/metro_noord_4k.hdr");
 
 	// scene_->loadGLTF("assets/subway/scene.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf");

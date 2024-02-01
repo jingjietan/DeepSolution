@@ -1057,13 +1057,13 @@ void Scene::loadCubeMap(const std::string& path)
 
 		irradianceMap_ = irradianceCubemap_->convert(commandBuffer, cubeMap_->GetView(), cubeMap_->GetSampler(), 32); // 32 by 32 irradiance
 
-		Transition::ColorAttachmentToShaderReadOptimal(irradianceMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 });
-
-		prefilterMap_ = prefilterCubemap_->prefilter(commandBuffer, irradianceMap_->GetView(), irradianceMap_->GetSampler(), 128); // 128 by 128 prefilter
-	
-		Transition::ColorAttachmentToShaderReadOptimal(prefilterMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 5, 0, 6 });
+		prefilterMap_ = prefilterCubemap_->prefilter(commandBuffer, cubeMap_->GetView(), cubeMap_->GetSampler(), 128); // 128 by 128 prefilter
 
 		brdfMap_ = prefilterCubemap_->precomputerBRDF(commandBuffer, 512, 512);
+
+		Transition::ColorAttachmentToShaderReadOptimal(irradianceMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 });
+	
+		Transition::ColorAttachmentToShaderReadOptimal(prefilterMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 5, 0, 6 });
 
 		Transition::ColorAttachmentToShaderReadOptimal(brdfMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 	});
