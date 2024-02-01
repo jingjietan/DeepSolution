@@ -166,6 +166,11 @@ std::unique_ptr<Image> IrradianceCubemap::convert(VkCommandBuffer commandBuffer,
 	return img;
 }
 
+std::unique_ptr<Image> IrradianceCubemap::convert(VkCommandBuffer commandBuffer, Image* image, int dim)
+{
+	return convert(commandBuffer, image->GetView(), image->GetSampler(), dim);
+}
+
 IrradianceCubemap::~IrradianceCubemap()
 {
 	vkDestroyDescriptorSetLayout(device_.device, irradianceDescLayout, nullptr);

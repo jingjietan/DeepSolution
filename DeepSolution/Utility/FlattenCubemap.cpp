@@ -101,10 +101,10 @@ FlattenCubemap::FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cu
 	ShaderReflect::deleteModules(device_.device, conversionStages);
 }
 
-std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int width, int height)
+std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
 {
-	VkExtent2D extent = { uint32_t(width), uint32_t(height) };
-	auto mipLevels = Image::calculateMaxMiplevels(width, height);
+	VkExtent2D extent = { uint32_t(dim), uint32_t(dim) };
+	auto mipLevels = Image::calculateMaxMiplevels(dim, dim);
 	VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 6 };
 	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, mipLevels, VK_FORMAT_R32G32B32A32_SFLOAT, 
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
@@ -169,6 +169,11 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 	img->AttachSampler(samplerCI);
 
 	return img;
+}
+
+std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Image* image, int dim)
+{
+	return convert(commandBuffer, image->GetView(), image->GetSampler(), dim);
 }
 
 FlattenCubemap::~FlattenCubemap()

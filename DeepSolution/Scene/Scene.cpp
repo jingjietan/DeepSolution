@@ -1013,7 +1013,6 @@ void Scene::loadCubeMap(const std::string& path)
 
 	const auto format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	const auto mipLevels = Image::calculateMaxMiplevels(x, y);
-	const VkImageSubresourceRange range = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT , .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = 1 };
 
 	VkImageCreateInfo imageCI{};
 	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1027,45 +1026,33 @@ void Scene::loadCubeMap(const std::string& path)
 	imageCI.format = format;
 	imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-	auto img = std::make_unique<Image>(device_, imageCI);
-
-	img->AttachImageView(range);
-
 	VkSamplerCreateInfo samplerInfo = 
 		CreateInfo::SamplerCI(mipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
 	
-	img->AttachSampler(samplerInfo);
-
 	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint32_t);
 	Buffer stagingBuffer(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 	stagingBuffer.upload(data, imageSize);
 
+	auto img = std::make_unique<Image>(device_, imageCI);
+	img->AttachImageView(img->GetFullRange());
+	img->AttachSampler(samplerInfo);
+
 	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
-		Transition::UndefinedToTransferDestination(img->Get(), commandBuffer, range);
-
+		img->UndefinedToTransferDestination(commandBuffer);
 		img->Upload(commandBuffer, stagingBuffer.operator const VkBuffer & ());
+		img->generateMaxMipmaps(commandBuffer);
 
-		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
+		cubeMap_ = flattenCubemap_->convert(commandBuffer, img.get(), 1024);
+		cubeMap_->ColorAttachmentToTransferDestination(commandBuffer);
+		cubeMap_->generateMaxCubeMipmaps(commandBuffer);
 
-		cubeMap_ = flattenCubemap_->convert(commandBuffer, img->GetView(), img->GetSampler(), 1024, 1024);
-
-		auto cubemapMiplevel = Image::calculateMaxMiplevels(1024, 1024);
-	
-		Transition::ColorAttachmentToTransferDestination(cubeMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, cubemapMiplevel, 0, 6 });
-
-		Image::generateCubemapMipmaps(cubeMap_->Get(), 1024, cubemapMiplevel, commandBuffer);
-
-		irradianceMap_ = irradianceCubemap_->convert(commandBuffer, cubeMap_->GetView(), cubeMap_->GetSampler(), 32); // 32 by 32 irradiance
-
-		prefilterMap_ = prefilterCubemap_->prefilter(commandBuffer, cubeMap_->GetView(), cubeMap_->GetSampler(), 128); // 128 by 128 prefilter
-
+		irradianceMap_ = irradianceCubemap_->convert(commandBuffer, cubeMap_.get(), 32); // 32 by 32 irradiance
+		prefilterMap_ = prefilterCubemap_->precomputeFilter(commandBuffer, cubeMap_.get(), 128); // 128 by 128 prefilter
 		brdfMap_ = prefilterCubemap_->precomputerBRDF(commandBuffer, 512, 512);
 
-		Transition::ColorAttachmentToShaderReadOptimal(irradianceMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 });
-	
-		Transition::ColorAttachmentToShaderReadOptimal(prefilterMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 5, 0, 6 });
-
-		Transition::ColorAttachmentToShaderReadOptimal(brdfMap_->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+		irradianceMap_->ColorAttachmentToShaderReadOptimal(commandBuffer);
+		prefilterMap_->ColorAttachmentToShaderReadOptimal(commandBuffer);
+		brdfMap_->ColorAttachmentToShaderReadOptimal(commandBuffer);
 	});
 
 	setName(device_, cubeMap_->Get(), path);

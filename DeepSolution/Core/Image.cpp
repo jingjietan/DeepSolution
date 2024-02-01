@@ -7,7 +7,8 @@
 
 #include <cassert>
 
-Image::Image(Device& device, const VkImageCreateInfo& imageInfo): device_(device), format_(imageInfo.format), width(imageInfo.extent.width), height(imageInfo.extent.height)
+Image::Image(Device& device, const VkImageCreateInfo& imageInfo): 
+    device_(device), format_(imageInfo.format), width(imageInfo.extent.width), height(imageInfo.extent.height), mipLevels(imageInfo.mipLevels), arrayLevels(imageInfo.arrayLayers)
 {
 	VmaAllocationCreateInfo allocCI{};
 	allocCI.usage = VMA_MEMORY_USAGE_AUTO;
@@ -23,7 +24,7 @@ void Image::AttachImageView(VkImageAspectFlags flags)
 	imageViewCI.image = image_;
 	imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	imageViewCI.format = format_;
-	imageViewCI.subresourceRange = { flags, 0, 1, 0, 1 };
+	imageViewCI.subresourceRange = { flags, 0, mipLevels, 0, arrayLevels };
 
 	check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &imageView_));
 }
@@ -65,7 +66,7 @@ void Image::Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const
 	VkBufferImageCopy2 imageCopy{};
 	imageCopy.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2;
 	imageCopy.imageOffset = { 0, 0, 0 };
-	imageCopy.imageExtent = { uint32_t(width), uint32_t(height), 1 };
+	imageCopy.imageExtent = { width, height, 1 };
 	imageCopy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
 
 	VkCopyBufferToImageInfo2 copyInfo{};
@@ -77,6 +78,25 @@ void Image::Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const
 	copyInfo.pRegions = &imageCopy;
 
 	vkCmdCopyBufferToImage2(commandBuffer, &copyInfo);
+}
+
+void Image::Upload(VkCommandBuffer commandBuffer, VkBuffer buffer, const VkImageSubresourceLayers& target) const
+{
+    VkBufferImageCopy2 imageCopy{};
+    imageCopy.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2;
+    imageCopy.imageOffset = { 0, 0, 0 };
+    imageCopy.imageExtent = { width, height, 1 };
+    imageCopy.imageSubresource = target;
+
+    VkCopyBufferToImageInfo2 copyInfo{};
+    copyInfo.sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2;
+    copyInfo.dstImage = image_;
+    copyInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    copyInfo.srcBuffer = buffer;
+    copyInfo.regionCount = 1;
+    copyInfo.pRegions = &imageCopy;
+
+    vkCmdCopyBufferToImage2(commandBuffer, &copyInfo);
 }
 
 VkImage Image::Get() const
@@ -97,6 +117,21 @@ VkSampler Image::GetSampler() const
 VkFormat Image::GetFormat() const
 {
     return format_;
+}
+
+uint32_t Image::GetMipLevels() const
+{
+    return mipLevels;
+}
+
+uint32_t Image::GetArrayLevels() const
+{
+    return arrayLevels;
+}
+
+VkImageSubresourceRange Image::GetFullRange(VkImageAspectFlags flag) const
+{
+    return { flag, 0, mipLevels, 0, arrayLevels };
 }
 
 uint32_t Image::calculateMaxMiplevels(int width, int height)
@@ -255,6 +290,85 @@ void Image::generateCubemapMipmaps(VkImage image, int width, uint32_t mipLevels,
     barrier2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 
     vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+}
+
+void Image::generateMaxMipmaps(VkCommandBuffer commandBuffer)
+{
+    generateMipmaps(image_, int(width), int(height), mipLevels, commandBuffer);
+}
+
+void Image::generateMaxCubeMipmaps(VkCommandBuffer commandBuffer)
+{
+    generateCubemapMipmaps(image_, int(width), mipLevels, commandBuffer);
+}
+
+void Image::UndefinedToTransferDestination(VkCommandBuffer commandBuffer)
+{
+    VkImageMemoryBarrier2 imageBarrier{};
+    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    imageBarrier.srcAccessMask = VK_ACCESS_2_NONE;
+    imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
+    imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+    imageBarrier.srcQueueFamilyIndex = 0;
+    imageBarrier.dstQueueFamilyIndex = 0;
+    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    imageBarrier.image = image_;
+    imageBarrier.subresourceRange = GetFullRange();
+
+    VkDependencyInfo dependency{};
+    dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency.imageMemoryBarrierCount = 1;
+    dependency.pImageMemoryBarriers = &imageBarrier;
+
+    vkCmdPipelineBarrier2KHR(commandBuffer, &dependency);
+}
+
+void Image::ColorAttachmentToTransferDestination(VkCommandBuffer commandBuffer) const
+{
+    VkImageMemoryBarrier2 imageBarrier{};
+    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    imageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    imageBarrier.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+    imageBarrier.srcQueueFamilyIndex = 0;
+    imageBarrier.dstQueueFamilyIndex = 0;
+    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    imageBarrier.image = image_;
+    imageBarrier.subresourceRange = GetFullRange();
+
+    VkDependencyInfo depedency{};
+    depedency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    depedency.imageMemoryBarrierCount = 1;
+    depedency.pImageMemoryBarriers = &imageBarrier;
+
+    vkCmdPipelineBarrier2KHR(commandBuffer, &depedency);
+}
+
+void Image::ColorAttachmentToShaderReadOptimal(VkCommandBuffer commandBuffer) const
+{
+    VkImageMemoryBarrier2 imageBarrier{};
+    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    imageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    imageBarrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+    imageBarrier.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    imageBarrier.srcQueueFamilyIndex = 0;
+    imageBarrier.dstQueueFamilyIndex = 0;
+    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    imageBarrier.image = image_;
+    imageBarrier.subresourceRange = GetFullRange();
+
+    VkDependencyInfo depedency{};
+    depedency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    depedency.imageMemoryBarrierCount = 1;
+    depedency.pImageMemoryBarriers = &imageBarrier;
+
+    vkCmdPipelineBarrier2KHR(commandBuffer, &depedency);
 }
 
 Image::~Image()

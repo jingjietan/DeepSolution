@@ -13,6 +13,7 @@ public:
 	IrradianceCubemap(Device& device, const std::shared_ptr<Buffer>& buffer);
 
 	std::unique_ptr<Image> convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim);
+	std::unique_ptr<Image> convert(VkCommandBuffer commandBuffer, Image* image, int dim);
 
 	~IrradianceCubemap();
 private:

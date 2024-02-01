@@ -13,10 +13,10 @@ public:
 	FlattenCubemap(Device& device, const std::shared_ptr<Buffer>& cubeBuffer);
 
 	/**
-	 * @brief Convert flat HDR image to cubemap. Width and Height must be the same. Only 32bit RGBA images are supported for now. Use graphics queue for this.
+	 * @brief Convert flat HDR image to cubemap. Only 32bit RGBA images are supported for now. Use graphics queue for this.
 	*/
-	std::unique_ptr<Image> convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int width, int height);
-
+	std::unique_ptr<Image> convert(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim);
+	std::unique_ptr<Image> convert(VkCommandBuffer commandBuffer, Image* image, int dim);
 	~FlattenCubemap();
 private:
 	Device& device_;

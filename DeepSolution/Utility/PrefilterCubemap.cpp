@@ -161,7 +161,7 @@ PrefilterCubemap::PrefilterCubemap(Device& device, const std::shared_ptr<Buffer>
 	}
 }
 
-std::unique_ptr<Image> PrefilterCubemap::prefilter(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
+std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
 {
 	VkExtent2D extent = { uint32_t(dim), uint32_t(dim) };
 	const uint32_t maxMipLevels = 5;
@@ -250,6 +250,11 @@ std::unique_ptr<Image> PrefilterCubemap::prefilter(VkCommandBuffer commandBuffer
 	img->AttachSampler(samplerCI);
 
 	return img;
+}
+
+std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer commandBuffer, Image* image, int dim)
+{
+	return precomputeFilter(commandBuffer, image->GetView(), image->GetSampler(), dim);
 }
 
 std::unique_ptr<Image> PrefilterCubemap::precomputerBRDF(VkCommandBuffer commandBuffer, int width, int height)
