@@ -204,7 +204,6 @@ Application::Application(int width, int height)
 	});
 
 	state_.camera_ = std::make_unique<ArcballCamera>(glm::vec3(2, 0, 0), glm::vec3(0, 0, 0), width, height, 0.01f, 50.0f);
-	//state_.camera_ = std::make_unique<ArcballCamera>(glm::vec3(0, 2, 0), glm::vec3(0, 0, 0), width, height, 0.01f, 50.0f);
 	//state_.camera_ = std::make_unique<FreeCamera>(glm::vec3(0, 2, 0), 0.f, -177.f, width, height, 0.01f, 50.0f);
 
 	device_.init(window_);
@@ -239,6 +238,7 @@ Application::Application(int width, int height)
 	scene_->loadCubeMap("assets/metro_noord_4k.hdr");
 
 	// scene_->loadGLTF("assets/subway/scene.gltf");
+	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/Waterbottle/glTF/Waterbottle.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/SciFiHelmet/glTF/SciFiHelmet.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf");

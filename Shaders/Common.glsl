@@ -4,6 +4,7 @@ struct DrawData
     int colorId;
 	int normalId;
     int mruId;
+	int emissiveId;
 };
 
 struct Light 

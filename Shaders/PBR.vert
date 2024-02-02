@@ -26,23 +26,25 @@ layout(location = 3) out vec4 fragTangent;
 layout(location = 4) out int fragColorId;
 layout(location = 5) out int fragNormalId;
 layout(location = 6) out int fragMRUId;
-layout(location = 7) out vec3 viewPos;
+layout(location = 7) out int fragEmissiveId;
+layout(location = 8) out vec3 viewPos;
 
 void main() {
 	// vec4 pos = constants.model * vec4(inPosition, 1.0);
 	DrawData drawData = drawDatas[gl_DrawID];
 
-	fragPos = inPosition.xyz;
+	fragPos = vec3(drawData.model * vec4(inPosition.xyz, 1.0));
 	fragTexCoord = inTexCoord;
 	viewPos = ubo.viewPos;
 
-	fragNormal = normalize(mat3(drawData.model) * inNormal);
+	fragNormal = normalize(transpose(inverse(mat3(drawData.model))) * inNormal);
 	fragTangent = vec4(normalize(inTangent.xyz), inTangent.w);
 
-    gl_Position = ubo.projection * ubo.view * drawData.model * vec4(inPosition, 1.0);
+    gl_Position = ubo.projection * ubo.view * vec4(fragPos, 1.0);
     fragTexCoord = inTexCoord;
 
 	fragColorId = drawData.colorId;
 	fragNormalId = drawData.normalId;
 	fragMRUId = drawData.mruId;
+	fragEmissiveId = drawData.emissiveId;
 }

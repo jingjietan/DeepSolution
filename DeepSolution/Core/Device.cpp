@@ -255,3 +255,8 @@ VkFormat Device::getDepthFormat() const
 	check(false, "Failed to select depth format!");
 	__assume(false);
 }
+
+void Device::performGeneralTask(const std::function<void(VkCommandBuffer)>& action)
+{
+	CreateInfo::performOneTimeAction(device, graphicsQueue.queue, graphicsPool, action);
+}

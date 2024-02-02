@@ -14,6 +14,7 @@
 #include "../Render/Skybox.h"
 #include "../Utility/IrradianceCubemap.h"
 #include "../Utility/PrefilterCubemap.h"
+#include "../Common/Handle.h"
 
 class Device;
 class Buffer;
@@ -31,6 +32,7 @@ struct Submesh
 	int colorId;
 	int normalId;
 	int mroId;
+	int emissiveId;
 
 	bool transparent;
 };
@@ -59,20 +61,13 @@ struct GlobalUniform
 	glm::vec3 viewPos;
 };
 
-struct PushConstant
-{
-	glm::mat4 model;
-	int colorId;
-	int normalId;
-	int mroId;
-};
-
 struct IndirectDrawParam
 {
 	glm::mat4 model;
 	int colorId;
 	int normalId;
 	int mroId;
+	int emissiveId;
 };
 
 class Scene
@@ -101,6 +96,10 @@ private:
 
 	std::vector<std::unique_ptr<Node>> nodes{};
 
+	//HandleMap<std::unique_ptr<Image>> aTextures_{};
+	//Handle loadTexture(const VkImageCreateInfo& info);
+	//Handle loadTexture(const std::string& name);
+
 	// Is this necessary?
 	void recreateAccumReveal(int width, int height);
 	std::unique_ptr<Image> accum;
@@ -124,9 +123,6 @@ private:
 	VkDescriptorSetLayout ibrSetLayout{};
 	VkDescriptorPool ibrPool{};
 	VkDescriptorSet ibrSet{};
-
-	std::unique_ptr<Image> defaultTextures[4];
-	void initialiseDefaultTextures();
 
 	std::vector<std::unique_ptr<Buffer>> perMeshDrawDataBuffer;
 	std::vector<std::unique_ptr<Buffer>> lightBuffer;

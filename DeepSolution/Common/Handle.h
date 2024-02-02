@@ -4,78 +4,77 @@
 
 #include <tsl/robin_map.h>
 
-enum class Handle: uint32_t
+struct Handle
 {
-	Invalid = 0
+	uint32_t id;
+	uint32_t generation;
 };
 
-template<class T, class H = Handle>
+/**
+ * @brief HandleMap holds handles from 0 to N. It keeps track of all valid, recycled and outdated handles.
+ * 
+ * References: https://floooh.github.io/2018/06/17/handles-vs-pointers.html
+*/
+template<class T>
 class HandleMap
 {
-	using underlying_map = tsl::robin_map<H, T>;
 public:
-	// initialise
-	HandleMap(): data_map(), recycle_handles(), frontier()
-	{
-
-	}
-
-	// iterators
-	using iterator = typename underlying_map::iterator;
-	using const_iterator = typename underlying_map::const_iterator;
-	iterator begin() noexcept { return data_map.begin(); }
-	const_iterator begin() const noexcept { return data_map.begin(); }
-	iterator end() noexcept { return data_map.end(); }
-	const_iterator end() const noexcept { return data_map.end(); }
+	static_assert(std::is_copy_constructible_v<T>, "Requires T to be copy constructable.");
+	static_assert(std::is_swappable_v<T>, "Requires T to be swappable.");
+	static_assert(std::is_move_constructible_v<T>, "Requires T to be move constructable.");
 
 	template<class ...Args>
-	H add(Args... args)
-	{
-		H id = get_id();
-			
-		data_map[id] = T(std::forward<Args>(args)...);
-
-		return id;
+	Handle add(Args&&... args) {
+		const auto id = get_id();
+		const Item& item = get_or_create_item(id, std::forward<Args>(args)...);
+		return { .id = id, .generation = item.second };
 	}
 
-	H add(T&& t)
-	{
-		H id = get_id();
-
-		data_map[id] = std::move(t);
-
-		return id;
+	void remove(const Handle& handle) {
+		map_[handle.id].second++;
+		recycle_buffer_.push_back(handle.id);
 	}
 
-	T& find(H handle)
-	{
-		return data_map.at(handle);
+	bool is_valid(const Handle& handle) {
+		if (auto it = map_.find(handle.id); it != map_.end()) {
+			return it->second.second == handle.generation;
+		}
+		return false;
 	}
 
-	void remove(H handle)
-	{
-		data_map.erase(handle);
-		recycle_handles.push_back(handle);
+	T& at(const Handle& handle) {
+		return map_.at(handle.id).first;
+	}
+
+	const T& at(const Handle& handle) const {
+		return map_.at(handle.id).first;
 	}
 
 private:
-	underlying_map data_map;
-	std::deque<H> recycle_handles;
-	uint64_t frontier;
-
-	H get_id()
-	{
-		bool is_recycled = !recycle_handles.empty();
-		H id;
-		if (is_recycled)
-		{
-			id = recycle_handles.front();
-			recycle_handles.pop_front();
+	using Item = std::pair<T, uint32_t>;
+	uint16_t get_id() {
+		if (recycle_buffer_.empty()) {
+			return frontier++;
 		}
-		else
-		{
-			id = static_cast<H>(++frontier);
+		else {
+			uint16_t id = recycle_buffer_.front();
+			recycle_buffer_.pop_front();
+			return id;
 		}
-		return id;
 	}
+
+	template<class ...Args>
+	const Item& get_or_create_item(uint16_t id, Args&&... args) {
+		if (auto it = map_.find(id); it != map_.end()) {
+			return it->second;
+		}
+		else {
+			map_.emplace(id, std::make_pair(std::move(T(std::forward<Args>(args)...)), 0));
+			return map_.find(id)->second;
+		}
+	}
+
+	tsl::robin_map<uint32_t, Item> map_;
+	std::deque<uint32_t> recycle_buffer_;
+	uint32_t frontier = 0;
 };

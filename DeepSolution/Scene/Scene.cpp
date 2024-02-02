@@ -6,6 +6,7 @@
 #include "../Core/Image.h"
 #include "../Core/Transition.h"
 #include "../Core/Cube.h"
+#include "../Common/Bench.h"
 
 #include <tiny_gltf.h>
 #include <spdlog/spdlog.h>
@@ -495,19 +496,12 @@ Scene::Scene(Device& device) : device_(device)
 	irradianceCubemap_ = std::make_unique<IrradianceCubemap>(device_, cubeBuffer_);
 	prefilterCubemap_ = std::make_unique<PrefilterCubemap>(device_, cubeBuffer_);
 
-	// Model Push Constant
-	VkPushConstantRange pushRange{};
-	pushRange.size = sizeof(PushConstant);
-	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
 	std::array pipelineSetLayouts{ globalSetLayout, bindlessSetLayout, ibrSetLayout };
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCI{};
 	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCI.pSetLayouts = pipelineSetLayouts.data();
 	pipelineLayoutCI.setLayoutCount = static_cast<uint32_t>(pipelineSetLayouts.size());
-	pipelineLayoutCI.pPushConstantRanges = &pushRange;
-	pipelineLayoutCI.pushConstantRangeCount = 1;
 	check(vkCreatePipelineLayout(device_.device, &pipelineLayoutCI, nullptr, &pipelineLayout_));
 
 	// Pool
@@ -591,50 +585,14 @@ Scene::Scene(Device& device) : device_(device)
 			VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 	}
 	// Write
+	DescriptorWrite writer;
 	for (size_t i = 0; i < maxFramesInFlight; i++)
 	{
-		VkDescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = globalUniformBuffers_[i]->operator const VkBuffer & ();
-		bufferInfo.range = VK_WHOLE_SIZE;
-
-		VkDescriptorBufferInfo perDrawbufferInfo{};
-		perDrawbufferInfo.buffer = perMeshDrawDataBuffer[i]->operator const VkBuffer & ();
-		perDrawbufferInfo.range = VK_WHOLE_SIZE;
-
-		VkDescriptorBufferInfo lightBufferInfo{};
-		lightBufferInfo.buffer = lightBuffer[i]->operator const VkBuffer & ();
-		lightBufferInfo.range = VK_WHOLE_SIZE;
-
-		VkWriteDescriptorSet writeSetBinding0{};
-		writeSetBinding0.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeSetBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		writeSetBinding0.descriptorCount = 1;
-		writeSetBinding0.dstArrayElement = 0;
-		writeSetBinding0.dstBinding = 0;
-		writeSetBinding0.dstSet = globalSets_[i];
-		writeSetBinding0.pBufferInfo = &bufferInfo;
-
-		VkWriteDescriptorSet writeSetBinding1{};
-		writeSetBinding1.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		writeSetBinding1.descriptorCount = 1;
-		writeSetBinding1.dstArrayElement = 0;
-		writeSetBinding1.dstBinding = 1;
-		writeSetBinding1.dstSet = globalSets_[i];
-		writeSetBinding1.pBufferInfo = &perDrawbufferInfo;
-		
-		VkWriteDescriptorSet writeSetBinding2{};
-		writeSetBinding2.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeSetBinding2.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		writeSetBinding2.descriptorCount = 1;
-		writeSetBinding2.dstArrayElement = 0;
-		writeSetBinding2.dstBinding = 2;
-		writeSetBinding2.dstSet = globalSets_[i];
-		writeSetBinding2.pBufferInfo = &lightBufferInfo;
-		
-		std::array writes = { writeSetBinding0, writeSetBinding1, writeSetBinding2 };
-		vkUpdateDescriptorSets(device.device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+		writer.add(globalSets_[i], 0, 0, BufferType::Uniform, 1, *globalUniformBuffers_[i], 0, VK_WHOLE_SIZE);
+		writer.add(globalSets_[i], 1, 0, BufferType::Storage, 1, *perMeshDrawDataBuffer[i], 0, VK_WHOLE_SIZE);
+		writer.add(globalSets_[i], 2, 0, BufferType::Storage, 1, *lightBuffer[i], 0, VK_WHOLE_SIZE);
 	}
+	writer.write(device_.device);
 }
 
 void Scene::loadGLTF(const std::string& path)
@@ -736,7 +694,7 @@ void Scene::loadGLTF(const std::string& path)
 		CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
 			Transition::UndefinedToTransferDestination(ptr->Get(), commandBuffer, range);
 
-			ptr->Upload(commandBuffer, stagingBuffer.operator const VkBuffer &());
+			ptr->Upload(commandBuffer, stagingBuffer);
 
 			Image::generateMipmaps(ptr->Get(), image.width, image.height, mipLevels, commandBuffer);
 		});
@@ -761,7 +719,13 @@ void Scene::loadGLTF(const std::string& path)
 
 	vkUpdateDescriptorSets(device_.device, 1, &writeSet, 0, nullptr);
 
-	const auto opaquePipeline = [&](bool doubleSided, int mode) {
+	struct SpecializationData
+	{
+		VkBool32 alphaMask;
+		float alphaMaskCutoff;
+	};
+
+	const auto opaquePipeline = [&](bool doubleSided, int mode, SpecializationData& data) {
 		VkPipeline pipeline;
 		std::array stages = {
 			CreateInfo::ShaderStage(VK_SHADER_STAGE_VERTEX_BIT, vertexShader_),
@@ -794,6 +758,20 @@ void Scene::loadGLTF(const std::string& path)
 
 		VkFormat swapchainFormat = device_.getSurfaceFormat();
 		auto rendering = CreateInfo::Rendering(&swapchainFormat, 1, device_.getDepthFormat());
+
+		std::array<VkSpecializationMapEntry, 2> mapEntries{};
+		mapEntries[0].constantID = 0;
+		mapEntries[0].offset = offsetof(SpecializationData, alphaMask);
+		mapEntries[0].size = sizeof(SpecializationData::alphaMask);
+		mapEntries[1].constantID = 1;
+		mapEntries[1].offset = offsetof(SpecializationData, alphaMaskCutoff);
+		mapEntries[1].size = sizeof(SpecializationData::alphaMaskCutoff);
+		VkSpecializationInfo specInfo{};
+		specInfo.dataSize = sizeof(SpecializationData);
+		specInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
+		specInfo.pMapEntries = mapEntries.data();
+		specInfo.pData = &data;
+		stages[1].pSpecializationInfo = &specInfo;
 
 		VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 		pipelineCreateInfo.stageCount = static_cast<uint32_t>(stages.size());
@@ -959,13 +937,18 @@ void Scene::loadGLTF(const std::string& path)
 				const auto colorId = material.pbrMetallicRoughness.baseColorTexture.index;
 				const auto normalId = material.normalTexture.index;
 				const auto mroId = material.pbrMetallicRoughness.metallicRoughnessTexture.index;
+				const auto emissiveId = material.emissiveTexture.index;
 				
 				const auto transparent = false; //material.alphaMode == "BLEND";
+
+				SpecializationData data{};
+				data.alphaMask = material.alphaMode == "MASK";
+				data.alphaMaskCutoff = material.alphaCutoff;
 				
 				// Pipeline
 				VkPipeline pipeline = transparent ? 
 					transparentPipeline(material.doubleSided, primitive.mode) : 
-					opaquePipeline(material.doubleSided, primitive.mode);
+					opaquePipeline(material.doubleSided, primitive.mode, data);
 			
 
 				gpuMesh->submeshes.push_back(Submesh{
@@ -979,6 +962,7 @@ void Scene::loadGLTF(const std::string& path)
 					.colorId = colorId,
 					.normalId = normalId,
 					.mroId = mroId,
+					.emissiveId = emissiveId,
 					.transparent = transparent
 				});
 				
@@ -1007,6 +991,8 @@ void Scene::loadGLTF(const std::string& path)
 
 void Scene::loadCubeMap(const std::string& path)
 {
+	auto s = Bench::record();
+	
 	int x, y, nr;
 	auto data = stbi_loadf(path.c_str(), &x, &y, &nr, 4);
 	check(data);
@@ -1032,14 +1018,15 @@ void Scene::loadCubeMap(const std::string& path)
 	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint32_t);
 	Buffer stagingBuffer(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 	stagingBuffer.upload(data, imageSize);
+	stbi_image_free(data);
 
 	auto img = std::make_unique<Image>(device_, imageCI);
 	img->AttachImageView(img->GetFullRange());
 	img->AttachSampler(samplerInfo);
-
+	
 	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
 		img->UndefinedToTransferDestination(commandBuffer);
-		img->Upload(commandBuffer, stagingBuffer.operator const VkBuffer & ());
+		img->Upload(commandBuffer, stagingBuffer);
 		img->generateMaxMipmaps(commandBuffer);
 
 		cubeMap_ = flattenCubemap_->convert(commandBuffer, img.get(), 1024);
@@ -1055,6 +1042,9 @@ void Scene::loadCubeMap(const std::string& path)
 		brdfMap_->ColorAttachmentToShaderReadOptimal(commandBuffer);
 	});
 
+	auto e = Bench::record();
+	SPDLOG_INFO("Cubemap took: {}ms.", Bench::diff<float>(s, e));
+
 	setName(device_, cubeMap_->Get(), path);
 	skybox_->set(cubeMap_->GetView(), cubeMap_->GetSampler());
 
@@ -1065,68 +1055,6 @@ void Scene::loadCubeMap(const std::string& path)
 	writer.write(device_.device);
 
 }
-
-/*
-Handle Scene::loadTexture(const std::string& path)
-{
-	int x, y, nr;
-	auto data = stbi_loadf(path.c_str(), &x, &y, &nr, 4);
-	if (!data)
-	{
-		return Handle::Invalid;
-	}
-
-	const auto mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(x, y)))) + 1;
-	const VkImageSubresourceRange range = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT , .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = 1 };
-
-	VkImageCreateInfo imageCI{};
-	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageCI.imageType = VK_IMAGE_TYPE_2D;
-	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	imageCI.arrayLayers = 1;
-	imageCI.extent = { uint32_t(x), uint32_t(y), 1 };
-	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
-	imageCI.mipLevels = mipLevels;
-	imageCI.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-
-	auto img = std::make_unique<Image>(device_, imageCI);
-
-	img->AttachImageView(range);
-
-	VkSamplerCreateInfo samplerInfo{};
-	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-	samplerInfo.minFilter = VK_FILTER_LINEAR;
-	samplerInfo.magFilter = VK_FILTER_LINEAR;
-	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-	samplerInfo.anisotropyEnable = VK_TRUE;
-	samplerInfo.maxAnisotropy = device_.deviceProperties.limits.maxSamplerAnisotropy;
-
-	img->AttachSampler(samplerInfo);
-
-	size_t imageSize = static_cast<size_t>(x) * y * 4 * sizeof(uint16_t);
-	Buffer stagingBuffer (device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	stagingBuffer.upload(data, imageSize);
-
-	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
-		Transition::UndefinedToTransferDestination(img->Get(), commandBuffer, range);
-
-		img->Upload(commandBuffer, stagingBuffer.operator const VkBuffer & ());
-
-		Image::generateMipmaps(img->Get(), x, y, mipLevels, commandBuffer);
-	});
-
-	setName(device_, img->Get(), path);
-
-	
-	auto hnd = loadedTextures_.add(std::move(img));
-	return hnd;
-}
-*/
 
 void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView colorView, VkImageView depthView)
 {
@@ -1218,6 +1146,7 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 			param.colorId = mesh.colorId;
 			param.normalId = mesh.normalId;
 			param.mroId = mesh.mroId;
+			param.emissiveId = mesh.emissiveId;
 			indirectParams.push_back(param);
 
 			VkDrawIndexedIndirectCommand command{};
@@ -1612,80 +1541,6 @@ VmaVirtualAllocation Scene::performAllocation(VmaVirtualBlock block, VkDeviceSiz
 		SPDLOG_WARN("Allocation failed!");
 	}
 	return allocation;
-}
-
-void Scene::initialiseDefaultTextures()
-{
-	/*
-	std::array<uint8_t, 4> colorData_{ 0xff,0xff,0xff,0xff };
-	auto commandBuffer = CreateInfo::allocateCommandBuffer(device_.device, device_.graphicsPool);
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-	Buffer stagingBuffer(device_, 4 * sizeof(uint8_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	stagingBuffer.upload(colorData_.data(), 4 * sizeof(uint8_t));
-	{
-		VkImageCreateInfo imageCI{};
-		imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		imageCI.imageType = VK_IMAGE_TYPE_2D;
-		imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageCI.arrayLayers = 1;
-		imageCI.extent = { 1, 1, 1 };
-		imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
-		imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
-		imageCI.mipLevels = 1;
-		imageCI.format = VK_FORMAT_R8G8B8A8_SRGB;
-		imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-		defaultTextures[0] = std::make_unique<Image>(device_, imageCI);
-
-		defaultTextures[0]->AttachImageView(VK_IMAGE_ASPECT_COLOR_BIT);
-
-		VkSamplerCreateInfo samplerCI{};
-		samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-		samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerCI.minFilter = VK_FILTER_LINEAR;
-		samplerCI.magFilter = VK_FILTER_LINEAR;
-		defaultTextures[0]->AttachSampler(samplerCI);
-
-		Transition::UndefinedToTransferDestination(defaultTextures[0]->Get(), commandBuffer);
-
-		defaultTextures[0]->Upload(commandBuffer, stagingBuffer);
-		
-		Transition::TransferDestinationToShaderReadOptimal(defaultTextures[0]->Get(), commandBuffer);
-	}
-
-	vkEndCommandBuffer(commandBuffer);
-
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffer;
-
-	vkQueueSubmit(device_.graphicsQueue.queue, 1, &submitInfo, nullptr);
-	vkQueueWaitIdle(device_.graphicsQueue.queue);
-
-	// Write
-	VkDescriptorImageInfo descImageInfo{};
-	descImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	descImageInfo.imageView = defaultTextures[0]->GetView();
-	descImageInfo.sampler = defaultTextures[0]->GetSampler();
-	
-	VkWriteDescriptorSet writeSet{};
-	writeSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writeSet.descriptorCount = 1;
-	writeSet.dstArrayElement = 0;
-	writeSet.dstBinding = 0;
-	writeSet.pImageInfo = &descImageInfo;
-	writeSet.dstSet = bindlessSet_;
-
-	vkUpdateDescriptorSets(device_.device, 1, &writeSet, 0, nullptr);
-	*/
 }
 
 glm::mat4 Node::getMatrix() const

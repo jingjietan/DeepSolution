@@ -9,6 +9,7 @@
     "tinygltf",
     "robin-map",
     "gtest",
-    "spirv-cross"
+    "spirv-cross",
+    "bshoshany-thread-pool"
   ]
 }

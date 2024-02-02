@@ -5,6 +5,9 @@
 
 #include "Common.glsl"
 
+layout (constant_id = 0) const bool ALPHA_MASK = false;
+layout (constant_id = 1) const float ALPHA_MASK_CUTOFF = 0.0;
+
 layout(location = 0) in vec3 fragPos;
 layout(location = 1) in vec2 fragTexCoord;
 layout(location = 2) in vec3 fragNormal;
@@ -12,7 +15,8 @@ layout(location = 3) in vec4 fragTangent;
 layout(location = 4) flat in int fragColorId;
 layout(location = 5) flat in int fragNormalId;
 layout(location = 6) flat in int fragMRUId;
-layout(location = 7) in vec3 viewPos;
+layout(location = 7) flat in int fragEmissiveId;
+layout(location = 8) in vec3 viewPos;
 
 layout(location = 0) out vec4 outColor;
 
@@ -42,6 +46,11 @@ void main() {
     vec4 color;
     if (fragColorId != -1) {
         color = texture(textures[fragColorId], fragTexCoord);
+		if (ALPHA_MASK) {
+			if (color.a < ALPHA_MASK_CUTOFF) {
+				discard;
+			}
+		}
     } else {
         color = vec4(1, 1, 1, 1);
     }
@@ -59,6 +68,13 @@ void main() {
     } else {
         mru = vec4(0, 0, 0, 0);
     }
+
+	vec4 emissive;
+	if (fragEmissiveId != -1) {
+		emissive = texture(textures[fragEmissiveId], fragTexCoord);
+	} else {
+		emissive = vec4(0, 0, 0, 0);
+	}
 
     // ----
 
@@ -97,7 +113,7 @@ void main() {
 
 	vec3 ambient = (kD * diffuse + specular);
 
-    outColor = vec4(ambient + Lo, 1.0);
+    outColor = vec4(ambient + Lo + emissive.xyz, 1.0);
 }
 
 
