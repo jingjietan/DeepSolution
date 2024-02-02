@@ -1,4 +1,4 @@
-﻿#include "DeepSolution/Application.h"
+﻿#include "Application.h"
 
 #include <vector>
 #include <spdlog/spdlog.h>

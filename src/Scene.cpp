@@ -739,6 +739,8 @@ void Scene::loadCubeMap(const std::string& path, VkDescriptorSet ibrSet)
 	auto img = std::make_unique<Image>(device_, imageCI);
 	img->AttachImageView(img->GetFullRange());
 	img->AttachSampler(samplerInfo);
+
+	std::vector<VkImageView> temp;
 	
 	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
 		img->UndefinedToTransferDestination(commandBuffer);
@@ -750,7 +752,7 @@ void Scene::loadCubeMap(const std::string& path, VkDescriptorSet ibrSet)
 		cubeMap_->generateMaxCubeMipmaps(commandBuffer);
 
 		irradianceMap_ = irradianceCubemap_->convert(commandBuffer, cubeMap_.get(), 32); // 32 by 32 irradiance
-		prefilterMap_ = prefilterCubemap_->precomputeFilter(commandBuffer, cubeMap_.get(), 128); // 128 by 128 prefilter
+		prefilterMap_ = prefilterCubemap_->precomputeFilter(commandBuffer, cubeMap_.get(), 128, temp); // 128 by 128 prefilter
 		brdfMap_ = prefilterCubemap_->precomputerBRDF(commandBuffer, 512, 512);
 
 		irradianceMap_->ColorAttachmentToShaderReadOptimal(commandBuffer);
@@ -760,6 +762,12 @@ void Scene::loadCubeMap(const std::string& path, VkDescriptorSet ibrSet)
 
 	auto e = Bench::record();
 	SPDLOG_INFO("Cubemap took: {}ms.", Bench::diff<float>(s, e));
+
+	// temp is ready to clear
+	for (const auto& t : temp)
+	{
+		vkDestroyImageView(device_.device, t, nullptr);
+	}
 
 	setName(device_.device, cubeMap_->Get(), path);
 
@@ -787,23 +795,6 @@ Scene::Drawbles Scene::getDrawables() const
 		{
 			for (const auto& submesh : node->mesh->submeshes)
 			{
-				/*
-				IndirectDrawParam param{};
-				param.model = model;
-				param.colorId = submesh.colorId;
-				param.normalId = submesh.normalId;
-				param.mroId = submesh.mroId;
-				param.emissiveId = submesh.emissiveId;
-				indirectParams.push_back(param);
-
-				VkDrawIndexedIndirectCommand command{};
-				command.firstIndex = submesh.firstIndex;
-				command.firstInstance = 0;
-				command.indexCount = submesh.indexCount;
-				command.instanceCount = 1;
-				command.vertexOffset = submesh.vertexOffset;
-				commands.push_back(command);
-				*/
 				auto& group = grouping[submesh.pipeline];
 				group.push_back(RenderObject{ .model = model, .submesh = &submesh });
 			}

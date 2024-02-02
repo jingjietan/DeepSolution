@@ -1,8 +1,12 @@
 ﻿cmake_minimum_required (VERSION 3.25)
 
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if(WIN32)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 project ("DeepSolution")
+
+# Project
 
 find_package(Vulkan REQUIRED)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
@@ -24,7 +28,58 @@ find_package(GTest CONFIG REQUIRED)
 
 add_subdirectory(third-party)
 
-add_executable (DeepSolution "DeepSolution.cpp" "DeepSolution/Core/Swapchain.h" "DeepSolution/Core/Swapchain.cpp" "DeepSolution/Core/Common.h" "DeepSolution/Core/Common.cpp"   "DeepSolution/Application.h" "DeepSolution/Application.cpp" "DeepSolution/Core/Transition.h" "DeepSolution/Core/Transition.cpp" "DeepSolution/Implementation/VMA.cpp" "DeepSolution/Core/Image.h" "DeepSolution/Core/Image.cpp"   "DeepSolution/Core/Device.h" "DeepSolution/Core/Device.cpp" "DeepSolution/ImGuiAdapter.h" "DeepSolution/ImGuiAdapter.cpp"   "DeepSolution/Scene.h" "DeepSolution/Scene.cpp" "DeepSolution/Implementation/TinyGLTF.cpp" "DeepSolution/Core/Buffer.h" "DeepSolution/Core/Buffer.cpp" "DeepSolution/Core/Shader.h" "DeepSolution/Core/Shader.cpp" "DeepSolution/Camera/Camera.h" "DeepSolution/Camera/Camera.cpp" "DeepSolution/Timer.h" "DeepSolution/Timer.cpp"  "DeepSolution/Render/InfiniteGrid.h" "DeepSolution/Render/InfiniteGrid.cpp"  "DeepSolution/State.h" "DeepSolution/Camera/ArcballCamera.h" "DeepSolution/Camera/FreeCamera.h" "DeepSolution/Camera/FreeCamera.cpp" "DeepSolution/Camera/ArcballCamera.cpp" "DeepSolution/Common/Handle.h"  "DeepSolution/Utility/FlattenCubemap.h" "DeepSolution/Utility/FlattenCubemap.cpp" "DeepSolution/Core/DescriptorWrite.h" "DeepSolution/Core/DescriptorWrite.cpp" "DeepSolution/Render/Skybox.h" "DeepSolution/Render/Skybox.cpp" "DeepSolution/Core/Cube.h" "DeepSolution/Utility/IrradianceCubemap.h" "DeepSolution/Utility/IrradianceCubemap.cpp" "DeepSolution/Utility/PrefilterCubemap.h" "DeepSolution/Utility/PrefilterCubemap.cpp" "DeepSolution/Common/Bench.h" "DeepSolution/Renderer.h" "DeepSolution/Renderer.cpp" "DeepSolution/Light.h")
+add_executable (DeepSolution 
+    "src/DeepSolution.cpp" 
+    "src/Core/Swapchain.h"
+    "src/Core/Swapchain.cpp" 
+    "src/Core/Common.h" 
+    "src/Core/Common.cpp"   
+    "src/Application.h" 
+    "src/Application.cpp" 
+    "src/Core/Transition.h" 
+    "src/Core/Transition.cpp" 
+    "src/Implementation/VMA.cpp" 
+    "src/Core/Image.h" 
+    "src/Core/Image.cpp"   
+    "src/Core/Device.h"
+    "src/Core/Device.cpp"
+    "src/ImGuiAdapter.h" 
+    "src/ImGuiAdapter.cpp" 
+    "src/Scene.h" 
+    "src/Scene.cpp" 
+    "src/Implementation/TinyGLTF.cpp" 
+    "src/Core/Buffer.h" 
+    "src/Core/Buffer.cpp"
+    "src/Core/Shader.h"
+    "src/Core/Shader.cpp" 
+    "src/Camera/Camera.h" 
+    "src/Camera/Camera.cpp"
+    "src/Timer.h" 
+    "src/Timer.cpp" 
+    "src/Render/InfiniteGrid.h"
+    "src/Render/InfiniteGrid.cpp"
+    "src/State.h" 
+    "src/Camera/ArcballCamera.h"
+    "src/Camera/FreeCamera.h" 
+    "src/Camera/FreeCamera.cpp"
+    "src/Camera/ArcballCamera.cpp"
+    "src/Common/Handle.h" 
+    "src/Utility/FlattenCubemap.h"
+    "src/Utility/FlattenCubemap.cpp"
+    "src/Core/DescriptorWrite.h"
+    "src/Core/DescriptorWrite.cpp"
+    "src/Render/Skybox.h" 
+    "src/Render/Skybox.cpp"
+    "src/Core/Cube.h"
+    "src/Utility/IrradianceCubemap.h"
+    "src/Utility/IrradianceCubemap.cpp" 
+    "src/Utility/PrefilterCubemap.h"
+    "src/Utility/PrefilterCubemap.cpp"
+    "src/Common/Bench.h"
+    "src/Renderer.h"
+    "src/Renderer.cpp"
+    "src/Light.h"
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Headers GPUOpen::VulkanMemoryAllocator)
 target_link_libraries(${PROJECT_NAME} PRIVATE volk::volk)
@@ -44,19 +99,31 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${Stb_INCLUDE_DIR})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 # target_compile_definitions(${PROJECT_NAME} PUBLIC TRACY_ENABLE TRACY_VK_USE_SYMBOL_TABLE)
 
+target_compile_definitions(${PROJECT_NAME} PUBLIC VK_NO_PROTOTYPES VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0 GLM_FORCE_DEPTH_ZERO_TO_ONE)
+
+# Docs
+find_package(Doxygen OPTIONAL_COMPONENTS dot)
+if (DOXYGEN_FOUND)
+    set(DOXYGEN_USE_MDFILE_AS_MAINPAGE "${CMAKE_SOURCE_DIR}/README.md")
+    doxygen_add_docs(doc
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    add_dependencies(${PROJECT_NAME} doc)
+else()
+    message("Doxygen not installed. Skipping make doc.")
+endif()
+
+# Test
 if (CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     add_subdirectory(test)
 endif()
 
-# For GLTF Compatibility
-target_compile_definitions(${PROJECT_NAME} PUBLIC VK_NO_PROTOTYPES VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0 GLM_FORCE_DEPTH_ZERO_TO_ONE)
-
+# Assets + Shaders
 add_custom_target(symlink COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_SOURCE_DIR}/assets ${CMAKE_BINARY_DIR}/assets)
-
 add_custom_target(shaders)
 
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/Shaders/)
-file(GLOB SHADER_FILES Shaders/*.vert Shaders/*.frag)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/shaders/)
+file(GLOB SHADER_FILES shaders/*.vert shaders/*.frag)
 foreach(FILE ${SHADER_FILES})
   get_filename_component(FILENAME ${FILE} NAME)
   add_custom_command(TARGET shaders

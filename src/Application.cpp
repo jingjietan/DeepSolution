@@ -360,17 +360,17 @@ void Application::Draw()
 	}
 
 	// Scene Rendering
-	auto commandBuffer = swapchain_->Acquire(width , height);
+	auto commandBuffer = swapchain_->acquire(width , height);
 
-	Transition::UndefinedToColorAttachment(swapchain_->GetCurrentImage(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+	Transition::UndefinedToColorAttachment(swapchain_->getCurrentImage(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
 
-	renderer_->draw(commandBuffer, swapchain_->GetCurrentImageView(), swapchain_->GetDepthImageView(), scene_->getDrawables(), state_);
+	renderer_->draw(commandBuffer, swapchain_->getCurrentImageView(), swapchain_->getDepthImageView(), scene_->getDrawables(), state_);
 
 	// ImGui Rendering
-	imgui_->Draw(swapchain_->GetCurrentImageView(), swapchain_->GetExtent(), commandBuffer);
+	imgui_->Draw(swapchain_->getCurrentImageView(), swapchain_->getExtent(), commandBuffer);
 	
 	// Transition Then Present.
-	auto image = swapchain_->GetCurrentImage();
+	auto image = swapchain_->getCurrentImage();
 	Transition::ColorAttachmentToPresentable(image, commandBuffer);
-	swapchain_->Present();
+	swapchain_->present();
 }

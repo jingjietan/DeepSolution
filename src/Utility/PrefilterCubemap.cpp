@@ -161,7 +161,7 @@ PrefilterCubemap::PrefilterCubemap(Device& device, const std::shared_ptr<Buffer>
 	}
 }
 
-std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim)
+std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim, std::vector<VkImageView>& recycling)
 {
 	VkExtent2D extent = { uint32_t(dim), uint32_t(dim) };
 	const uint32_t maxMipLevels = 5;
@@ -213,7 +213,7 @@ std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer comman
 			check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &iv));
 			return iv;
 		}();
-		cleanupBin.push_back(imageView);
+		recycling.push_back(imageView);
 
 		colorAttachment.imageView = imageView;
 		renderInfo.renderArea.extent.width = uint32_t(mippedDim);
@@ -252,9 +252,9 @@ std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer comman
 	return img;
 }
 
-std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer commandBuffer, Image* image, int dim)
+std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer commandBuffer, Image* image, int dim, std::vector<VkImageView>& recycling)
 {
-	return precomputeFilter(commandBuffer, image->GetView(), image->GetSampler(), dim);
+	return precomputeFilter(commandBuffer, image->GetView(), image->GetSampler(), dim, recycling);
 }
 
 std::unique_ptr<Image> PrefilterCubemap::precomputerBRDF(VkCommandBuffer commandBuffer, int width, int height)
@@ -321,9 +321,4 @@ PrefilterCubemap::~PrefilterCubemap()
 	vkDestroyDescriptorPool(device_.device, prefilterPool, nullptr);
 	vkDestroyPipelineLayout(device_.device, prefilterLayout, nullptr);
 	vkDestroyPipeline(device_.device, prefilterPipeline, nullptr);
-
-	for (const auto& imageView : cleanupBin)
-	{
-		vkDestroyImageView(device_.device, imageView, nullptr);
-	}
 }

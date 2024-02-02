@@ -23,18 +23,18 @@ public:
 	 * @brief Acquire an image and updates the internal image index.
 	 * @return A command buffer that has begin recording.
 	*/
-	VkCommandBuffer Acquire(int width, int height);
+	VkCommandBuffer acquire(int width, int height);
 
 	/**
 	 * @brief Submits the frame command buffer and presents the corresponding image index
 	*/
-	void Present();
+	void present();
 
-	VkImage GetCurrentImage() const;
-	VkImageView GetCurrentImageView() const;
-	VkImageView GetDepthImageView() const;
-	VkExtent2D GetExtent() const;
-	VkFormat GetFormat() const;
+	VkImage getCurrentImage() const;
+	VkImageView getCurrentImageView() const;
+	VkImageView getDepthImageView() const;
+	VkExtent2D getExtent() const;
+	VkFormat getFormat() const;
 
 	~Swapchain();
 private:

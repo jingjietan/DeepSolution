@@ -107,7 +107,7 @@ void Swapchain::Refresh()
 	}
 }
 
-VkCommandBuffer Swapchain::Acquire(int width, int height)
+VkCommandBuffer Swapchain::acquire(int width, int height)
 {
 	if (width != surfaceExtent_.width || height != surfaceExtent_.height)
 	{
@@ -140,7 +140,7 @@ VkCommandBuffer Swapchain::Acquire(int width, int height)
 	return resource.commandBuffer;
 }
 
-void Swapchain::Present()
+void Swapchain::present()
 {
 	const auto& resource = frameResources_[currentFrame_];
 
@@ -182,27 +182,27 @@ void Swapchain::Present()
 }
 
 
-VkImage Swapchain::GetCurrentImage() const
+VkImage Swapchain::getCurrentImage() const
 {
 	return images_[imageIndex_];
 }
 
-VkImageView Swapchain::GetCurrentImageView() const
+VkImageView Swapchain::getCurrentImageView() const
 {
 	return imageViews_[imageIndex_];
 }
 
-VkImageView Swapchain::GetDepthImageView() const
+VkImageView Swapchain::getDepthImageView() const
 {
 	return depthImageView_;
 }
 
-VkExtent2D Swapchain::GetExtent() const
+VkExtent2D Swapchain::getExtent() const
 {
 	return surfaceExtent_;
 }
 
-VkFormat Swapchain::GetFormat() const
+VkFormat Swapchain::getFormat() const
 {
 	return imageFormat;
 }

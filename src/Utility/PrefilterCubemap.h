@@ -13,8 +13,8 @@ class PrefilterCubemap
 public:
 	PrefilterCubemap(Device& device, const std::shared_ptr<Buffer>& cubeBuffer);
 
-	std::unique_ptr<Image> precomputeFilter(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim);
-	std::unique_ptr<Image> precomputeFilter(VkCommandBuffer commandBuffer, Image* image, int dim);
+	std::unique_ptr<Image> precomputeFilter(VkCommandBuffer commandBuffer, VkImageView imageView, VkSampler sampler, int dim, std::vector<VkImageView>& recycling);
+	std::unique_ptr<Image> precomputeFilter(VkCommandBuffer commandBuffer, Image* image, int dim, std::vector<VkImageView>& recycling);
 	std::unique_ptr<Image> precomputerBRDF(VkCommandBuffer commandBuffer, int width, int height);
 
 	~PrefilterCubemap();
@@ -33,6 +33,4 @@ private:
 
 	std::shared_ptr<Buffer> cubeBuffer;
 	std::unique_ptr<Buffer> uniformBuffer;
-
-	std::vector<VkImageView> cleanupBin{}; // this is for cleanup
 };
