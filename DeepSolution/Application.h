@@ -9,8 +9,9 @@
 #include "ImGuiAdapter.h"
 
 #include <memory>
-#include "Scene/Scene.h"
+#include "Scene.h"
 #include "State.h"
+#include "Renderer.h"
 
 class Application
 {
@@ -29,6 +30,7 @@ private:
 	std::unique_ptr<Swapchain> swapchain_;
 	std::unique_ptr<ImGuiAdapter> imgui_;
 	std::unique_ptr<Scene> scene_;
+	std::unique_ptr<Renderer> renderer_;
 
 	State state_{};
 	//

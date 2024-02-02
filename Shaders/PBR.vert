@@ -14,6 +14,10 @@ layout(scalar, set = 0, binding = 1) buffer PerMeshDraw {
     DrawData drawDatas[];
 };
 
+layout( push_constant ) uniform DrawIdOffset  {
+	uint drawOffset;
+};
+
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec4 inTangent;
@@ -31,7 +35,7 @@ layout(location = 8) out vec3 viewPos;
 
 void main() {
 	// vec4 pos = constants.model * vec4(inPosition, 1.0);
-	DrawData drawData = drawDatas[gl_DrawID];
+	DrawData drawData = drawDatas[gl_DrawID + drawOffset];
 
 	fragPos = vec3(drawData.model * vec4(inPosition.xyz, 1.0));
 	fragTexCoord = inTexCoord;

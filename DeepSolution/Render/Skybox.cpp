@@ -79,7 +79,7 @@ Skybox::Skybox(Device& device, const std::shared_ptr<Buffer>& cubeBuffer) : devi
 	}();
 
 	DescriptorWrite writer;
-	writer.add(skyboxSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer & (), 0, VK_WHOLE_SIZE);
+	writer.add(skyboxSet, 0, 0, BufferType::Uniform, 1, *uniformBuffer, 0, VK_WHOLE_SIZE);
 	writer.write(device_.device);
 
 	ShaderReflect::deleteModules(device_.device, skyboxStages);
@@ -144,7 +144,7 @@ void Skybox::render(VkCommandBuffer commandBuffer, const glm::mat4& projection, 
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline);
 
 	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeBuffer->operator const VkBuffer & (), &offset);
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, *cubeBuffer, &offset);
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxLayout, 0, 1, &skyboxSet, 0, nullptr);
 
 	vkCmdDraw(commandBuffer, cubeVertices.size(), 1, 0, 0);

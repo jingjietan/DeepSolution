@@ -2,6 +2,7 @@
 
 #include "Core/Common.h"
 #include "Core/Transition.h"
+#include "Core/Image.h"
 
 #include <VkBootstrap.h>
 #include <volk.h>
@@ -203,7 +204,7 @@ Application::Application(int width, int height)
 		app->state_.camera_->scrollWheel(xoffset, yoffset);
 	});
 
-	state_.camera_ = std::make_unique<ArcballCamera>(glm::vec3(2, 0, 0), glm::vec3(0, 0, 0), width, height, 0.01f, 50.0f);
+	state_.camera_ = std::make_unique<ArcballCamera>(glm::vec3(2, 0, 0), glm::vec3(0, 0, 0), float(width), float(height), 0.01f, 50.0f);
 	//state_.camera_ = std::make_unique<FreeCamera>(glm::vec3(0, 2, 0), 0.f, -177.f, width, height, 0.01f, 50.0f);
 
 	device_.init(window_);
@@ -233,16 +234,23 @@ Application::Application(int width, int height)
 	swapchain_ = std::make_unique<Swapchain>(device_, device_.getDepthFormat());
 
 	scene_ = std::make_unique<Scene>(device_);
+	renderer_ = std::make_unique<Renderer>(device_, *scene_);
 
 	// scene_->loadCubeMap("assets/rostock_laage_airport_4k.hdr");
-	scene_->loadCubeMap("assets/metro_noord_4k.hdr");
+	scene_->loadCubeMap("assets/metro_noord_4k.hdr", renderer_->getIBRSet());
+
+#define RE(r) \
+r->getVertexModule(),\
+r->getFragmentModule(),\
+r->getImageSet(),\
+r->getPipelineLayout()
 
 	// scene_->loadGLTF("assets/subway/scene.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/Waterbottle/glTF/Waterbottle.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/BoomBoxWithAxes/glTF/BoomBoxWithAxes.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/SciFiHelmet/glTF/SciFiHelmet.gltf");
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf");
-	scene_->loadGLTF("assets/glTF-Sample-Assets/Models/ABeautifulGame/glTF/ABeautifulGame.gltf");
+	scene_->loadGLTF("assets/glTF-Sample-Assets/Models/ABeautifulGame/glTF/ABeautifulGame.gltf", RE(renderer_));
 	// scene_->loadGLTF("assets/glTF-Sample-Assets/Models/Suzanne/glTF/Suzanne.gltf");
 }
 
@@ -331,9 +339,10 @@ void Application::run()
 Application::~Application()
 {
 	vkDeviceWaitIdle(device_.device);
-
+	
+	renderer_.reset();
 	scene_.reset();
-
+	
 	imgui_.reset();
 	swapchain_.reset();
 
@@ -355,8 +364,8 @@ void Application::Draw()
 
 	Transition::UndefinedToColorAttachment(swapchain_->GetCurrentImage(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
 
-	scene_->draw(commandBuffer, state_, swapchain_->GetCurrentImageView(), swapchain_->GetDepthImageView());
-	
+	renderer_->draw(commandBuffer, swapchain_->GetCurrentImageView(), swapchain_->GetDepthImageView(), scene_->getDrawables(), state_);
+
 	// ImGui Rendering
 	imgui_->Draw(swapchain_->GetCurrentImageView(), swapchain_->GetExtent(), commandBuffer);
 	

@@ -18,9 +18,13 @@ public:
 
 	void copy(const Buffer& destBuffer, VkCommandBuffer commandBuffer, size_t size, size_t destOffset, size_t srcOffset) const;
 
-	operator const VkBuffer &() const
+	operator VkBuffer() const
 	{
 		return buffer_;
+	}
+	operator VkBuffer* ()
+	{
+		return &buffer_;
 	}
 
 	~Buffer();

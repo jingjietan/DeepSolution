@@ -268,7 +268,7 @@ VkSamplerCreateInfo CreateInfo::SamplerCI(uint32_t mipLevels, VkSamplerAddressMo
 
 // ----
 
-void Detail::setName(Device& device, VkObjectType type, void* ptr, const std::string& name)
+void Detail::setName(VkDevice device, VkObjectType type, void* ptr, const std::string& name)
 {
 #ifndef NDEBUG
 	VkDebugUtilsObjectNameInfoEXT nameInfo{};
@@ -276,6 +276,6 @@ void Detail::setName(Device& device, VkObjectType type, void* ptr, const std::st
 	nameInfo.objectType = type;
 	nameInfo.objectHandle = reinterpret_cast<uint64_t>(ptr);
 	nameInfo.pObjectName = name.c_str();
-	check(vkSetDebugUtilsObjectNameEXT(device.device, &nameInfo));
+	check(vkSetDebugUtilsObjectNameEXT(device, &nameInfo));
 #endif // !NDEBUG
 }

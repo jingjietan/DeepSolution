@@ -81,7 +81,7 @@ IrradianceCubemap::IrradianceCubemap(Device& device, const std::shared_ptr<Buffe
 	}();
 
 	DescriptorWrite writer;
-	writer.add(irradianceSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer &(), 0, VK_WHOLE_SIZE);
+	writer.add(irradianceSet, 0, 0, BufferType::Uniform, 1, *uniformBuffer, 0, VK_WHOLE_SIZE);
 	writer.write(device_.device);
 
 	const auto projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.f);
@@ -150,7 +150,7 @@ std::unique_ptr<Image> IrradianceCubemap::convert(VkCommandBuffer commandBuffer,
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, irradiancePipeline);
 
 	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeBuffer->operator const VkBuffer & (), &offset);
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, *cubeBuffer, &offset);
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, irradianceLayout, 0, 1, &irradianceSet, 0, nullptr);
 
 	vkCmdDraw(commandBuffer, cubeVertices.size(), 1, 0, 0);

@@ -7,6 +7,13 @@
 #include <vulkan/vulkan.h>
 #include <volk.h>
 
+template <class T>
+inline void hash_combine(std::size_t& seed, const T& v)
+{
+	std::hash<T> hasher;
+	seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
 // Check
 
 void check(bool condition, const std::string& message = "", const std::source_location& location = std::source_location::current());
@@ -77,40 +84,46 @@ void Connect(A& from, Args& ...args)
 class Device;
 
 namespace Detail {
-	void setName(Device& device, VkObjectType type, void* ptr, const std::string& name);
+	void setName(VkDevice device, VkObjectType type, void* ptr, const std::string& name);
 }
 
 template<typename T>
-void setName(Device& device, T object, const std::string& name) = delete;
+void setName(VkDevice device, T object, const std::string& name) = delete;
 
 template<>
-inline void setName<VkQueue>(Device& device, VkQueue queue, const std::string& name)
+inline void setName<VkQueue>(VkDevice device, VkQueue queue, const std::string& name)
 {
 	Detail::setName(device, VK_OBJECT_TYPE_QUEUE, queue, name);
 }
 
 template<>
-inline void setName<VkDescriptorSet>(Device& device, VkDescriptorSet queue, const std::string& name)
+inline void setName<VkDescriptorSet>(VkDevice device, VkDescriptorSet queue, const std::string& name)
 {
 	Detail::setName(device, VK_OBJECT_TYPE_DESCRIPTOR_SET, queue, name);
 }
 
 template<>
-inline void setName<VkDescriptorSetLayout>(Device& device, VkDescriptorSetLayout queue, const std::string& name)
+inline void setName<VkDescriptorSetLayout>(VkDevice device, VkDescriptorSetLayout queue, const std::string& name)
 {
 	Detail::setName(device, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, queue, name);
 }
 
 template<>
-inline void setName<VkDescriptorPool>(Device& device, VkDescriptorPool queue, const std::string& name)
+inline void setName<VkDescriptorPool>(VkDevice device, VkDescriptorPool queue, const std::string& name)
 {
 	Detail::setName(device, VK_OBJECT_TYPE_DESCRIPTOR_POOL, queue, name);
 }
 
 template<>
-inline void setName<VkImage>(Device& device, VkImage queue, const std::string& name)
+inline void setName<VkImage>(VkDevice device, VkImage queue, const std::string& name)
 {
 	Detail::setName(device, VK_OBJECT_TYPE_IMAGE, queue, name);
+}
+
+template<>
+inline void setName<VkPipelineLayout>(VkDevice device, VkPipelineLayout queue, const std::string& name)
+{
+	Detail::setName(device, VK_OBJECT_TYPE_PIPELINE_LAYOUT, queue, name);
 }
 
 // Misc

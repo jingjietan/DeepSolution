@@ -81,7 +81,7 @@ PrefilterCubemap::PrefilterCubemap(Device& device, const std::shared_ptr<Buffer>
 			}();
 
 		DescriptorWrite writer;
-		writer.add(prefilterSet, 0, 0, BufferType::Uniform, 1, uniformBuffer->operator const VkBuffer & (), 0, VK_WHOLE_SIZE);
+		writer.add(prefilterSet, 0, 0, BufferType::Uniform, 1, *uniformBuffer, 0, VK_WHOLE_SIZE);
 		writer.write(device_.device);
 
 		const auto projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.f);
@@ -231,7 +231,7 @@ std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer comman
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, prefilterPipeline);
 
 		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeBuffer->operator const VkBuffer & (), &offset);
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, *cubeBuffer, &offset);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, prefilterLayout, 0, 1, &prefilterSet, 0, nullptr);
 
 		float roughness = float(mipLevel) / float(maxMipLevels - 1);

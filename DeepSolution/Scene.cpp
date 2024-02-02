@@ -1,21 +1,21 @@
 #include "Scene.h"
-#include "../Core/Common.h"
-#include "../Core/Buffer.h"
-#include "../Core/Device.h"
-#include "../Core/Shader.h"
-#include "../Core/Image.h"
-#include "../Core/Transition.h"
-#include "../Core/Cube.h"
-#include "../Common/Bench.h"
+#include "Core/Common.h"
+#include "Core/Buffer.h"
+#include "Core/Device.h"
+#include "Core/Shader.h"
+#include "Core/Image.h"
+#include "Core/Transition.h"
+#include "Core/Cube.h"
+#include "Common/Bench.h"
 
 #include <tiny_gltf.h>
 #include <spdlog/spdlog.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <volk.h>
-#include "../Light.h"
+#include "Light.h"
 #include <stb_image.h>
-#include "../Core/DescriptorWrite.h"
+#include "Core/DescriptorWrite.h"
 
 namespace {
 	template<class T>
@@ -213,6 +213,14 @@ namespace {
 			throw std::runtime_error("Not implemented!");
 		}
 	}
+
+
+	struct SpecializationData
+	{
+		VkBool32 alphaMask;
+		float alphaMaskCutoff;
+	};
+
 }
 
 Scene::Scene(Device& device) : device_(device)
@@ -222,9 +230,6 @@ Scene::Scene(Device& device) : device_(device)
 	// TODO: make these buffers resizable.
 	constexpr size_t vertexBufferSize = 1024ull * 1024ull * 1024ull; // 1gb.
 	constexpr size_t indexBufferSize = 256ull * 1024ull * 1024ull; // 256mb;
-	constexpr size_t indirectBufferSize = 2048ull * sizeof(VkDrawIndexedIndirectCommand);
-	constexpr size_t meshDrawDataBufferSize = 2048ull * sizeof(IndirectDrawParam);
-	constexpr size_t lightBufferSize = 128ull * sizeof(Light) + sizeof(LightUpload);
 
 	VmaVirtualBlockCreateInfo blockCI{};
 	blockCI.size = vertexBufferSize;
@@ -247,29 +252,16 @@ Scene::Scene(Device& device) : device_(device)
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
 
-	indirectBuffer = std::make_unique<Buffer>(device_, indirectBufferSize,
-		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+	const auto cubeSize = sizeof(BasicVertex) * cubeVertices.size();
+	cubeBuffer_ = std::make_unique<Buffer>(device_, cubeSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+	cubeBuffer_->upload(cubeVertices.data(), cubeSize);
 
-	perMeshDrawDataBuffer.resize(maxFramesInFlight);
-	lightBuffer.resize(maxFramesInFlight);
-	
-	for (size_t i = 0; i < maxFramesInFlight; i++)
-	{
-		perMeshDrawDataBuffer[i] = std::make_unique<Buffer>(device_, meshDrawDataBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-			VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-
-		lightBuffer[i] = std::make_unique<Buffer>(device_, lightBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
-			VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	}
-	
-
-	vertexShader_ = loadShader(device.device, "Shaders/PBR.vert.spv");
-	fragmentShader_ = loadShader(device.device, "Shaders/PBR.frag.spv");
-
-	transparentVertex_ = loadShader(device.device, "Shaders/TransparentPBR.vert.spv");
-	transparentFragment_ = loadShader(device.device, "Shaders/TransparentPBR.frag.spv");
+	flattenCubemap_ = std::make_unique<FlattenCubemap>(device_, cubeBuffer_);
+	irradianceCubemap_ = std::make_unique<IrradianceCubemap>(device_, cubeBuffer_);
+	prefilterCubemap_ = std::make_unique<PrefilterCubemap>(device_, cubeBuffer_);
 
 	// Compositing Pipeline
+	/*
 	compositingSetLayout = [](VkDevice device) {
 		VkDescriptorSetLayout layout;
 		std::array<VkDescriptorSetLayoutBinding, 2> compositingBindings{};
@@ -391,211 +383,10 @@ Scene::Scene(Device& device) : device_(device)
 		check(vkAllocateDescriptorSets(device, &allocateInfo, &set));
 		return set;
 	}(device.device, compositingPool, compositingSetLayout);
-
-	// Global Descriptor Set (Per Frame, Global)
-	VkDescriptorSetLayoutBinding globalSetBinding0{};
-	globalSetBinding0.binding = 0;
-	globalSetBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	globalSetBinding0.descriptorCount = 1;
-	globalSetBinding0.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-	VkDescriptorSetLayoutBinding globalSetBinding1{};
-	globalSetBinding1.binding = 1;
-	globalSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	globalSetBinding1.descriptorCount = 1;
-	globalSetBinding1.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	VkDescriptorSetLayoutBinding globalSetBinding2{};
-	globalSetBinding2.binding = 2;
-	globalSetBinding2.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	globalSetBinding2.descriptorCount = 1;
-	globalSetBinding2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	std::array globalSetBindings = { globalSetBinding0, globalSetBinding1, globalSetBinding2 };
-
-	VkDescriptorSetLayoutCreateInfo globalSetLayoutCI{};
-	globalSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	globalSetLayoutCI.bindingCount = static_cast<uint32_t>(globalSetBindings.size());
-	globalSetLayoutCI.pBindings = globalSetBindings.data();
-	check(vkCreateDescriptorSetLayout(device.device, &globalSetLayoutCI, nullptr, &globalSetLayout));
-
-	// Bindless Set (Global)
-	VkDescriptorSetLayoutBinding bindlessSetBinding0{};
-	bindlessSetBinding0.binding = 0;
-	bindlessSetBinding0.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindlessSetBinding0.descriptorCount = 4;
-	bindlessSetBinding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	VkDescriptorSetLayoutBinding bindlessSetBinding1{};
-	bindlessSetBinding1.binding = 1;
-	bindlessSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindlessSetBinding1.descriptorCount = 10000;
-	bindlessSetBinding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	VkDescriptorBindingFlags bindlessFlags = 
-		VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT |
-		VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
-		VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT |
-		VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT_EXT;
-
-	std::array bindingFlags{ (VkDescriptorBindingFlags)VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT, bindlessFlags, };
-
-	VkDescriptorSetLayoutBindingFlagsCreateInfo bindlessSetLayoutCIFlags{};
-	bindlessSetLayoutCIFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-	bindlessSetLayoutCIFlags.bindingCount = bindingFlags.size();
-	bindlessSetLayoutCIFlags.pBindingFlags = bindingFlags.data();
-
-	std::array bindings{ bindlessSetBinding0, bindlessSetBinding1 };
-
-	VkDescriptorSetLayoutCreateInfo bindlessSetLayoutCI{};
-	bindlessSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	bindlessSetLayoutCI.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-	bindlessSetLayoutCI.bindingCount = bindings.size();
-	bindlessSetLayoutCI.pBindings = bindings.data();
-	Connect(bindlessSetLayoutCI, bindlessSetLayoutCIFlags);
-
-	check(vkCreateDescriptorSetLayout(device.device, &bindlessSetLayoutCI, nullptr, &bindlessSetLayout));
-	setName(device_, bindlessSetLayout, "Bindless Set Layout");
-
-	// IBR set
-	VkDescriptorSetLayoutBinding ibrSetBinding0{};
-	ibrSetBinding0.binding = 0;
-	ibrSetBinding0.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	ibrSetBinding0.descriptorCount = 1;
-	ibrSetBinding0.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	VkDescriptorSetLayoutBinding ibrSetBinding1{};
-	ibrSetBinding1.binding = 1;
-	ibrSetBinding1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	ibrSetBinding1.descriptorCount = 1;
-	ibrSetBinding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	VkDescriptorSetLayoutBinding ibrSetBinding2{};
-	ibrSetBinding2.binding = 2;
-	ibrSetBinding2.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	ibrSetBinding2.descriptorCount = 1;
-	ibrSetBinding2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	std::array ibrBindings{ ibrSetBinding0, ibrSetBinding1, ibrSetBinding2 };
-
-	VkDescriptorSetLayoutCreateInfo ibrSetLayoutCI{};
-	ibrSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	ibrSetLayoutCI.bindingCount = static_cast<uint32_t>(ibrBindings.size());
-	ibrSetLayoutCI.pBindings = ibrBindings.data();
-	check(vkCreateDescriptorSetLayout(device.device, &ibrSetLayoutCI, nullptr, &ibrSetLayout));
-	setName(device_, ibrSetLayout, "IBR Set Layout");
-
-	// Rendering techniques
-	const auto cubeSize = sizeof(BasicVertex) * cubeVertices.size();
-	cubeBuffer_ = std::make_unique<Buffer>(device_, cubeSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	cubeBuffer_->upload(cubeVertices.data(), cubeSize);
-
-	infiniteGrid_ = std::make_unique<InfiniteGrid>(device_, globalSetLayout);
-	flattenCubemap_ = std::make_unique<FlattenCubemap>(device_, cubeBuffer_);
-	skybox_ = std::make_unique<Skybox>(device_, cubeBuffer_);
-	irradianceCubemap_ = std::make_unique<IrradianceCubemap>(device_, cubeBuffer_);
-	prefilterCubemap_ = std::make_unique<PrefilterCubemap>(device_, cubeBuffer_);
-
-	std::array pipelineSetLayouts{ globalSetLayout, bindlessSetLayout, ibrSetLayout };
-
-	VkPipelineLayoutCreateInfo pipelineLayoutCI{};
-	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutCI.pSetLayouts = pipelineSetLayouts.data();
-	pipelineLayoutCI.setLayoutCount = static_cast<uint32_t>(pipelineSetLayouts.size());
-	check(vkCreatePipelineLayout(device_.device, &pipelineLayoutCI, nullptr, &pipelineLayout_));
-
-	// Pool
-	VkDescriptorPoolSize poolSize{};
-	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSize.descriptorCount = maxFramesInFlight;
-	VkDescriptorPoolCreateInfo poolCI{};
-	poolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolCI.maxSets = 16;
-	poolCI.poolSizeCount = 1;
-	poolCI.pPoolSizes = &poolSize;
-	check(vkCreateDescriptorPool(device.device, &poolCI, nullptr, &globalPool_));
-	setName(device_, globalPool_, "Global Pool");
-
-	VkDescriptorPoolSize bindlessImagePoolSize{};
-	bindlessImagePoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindlessImagePoolSize.descriptorCount = 512;
-	
-	VkDescriptorPoolCreateInfo bindlessPoolCI{};
-	bindlessPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	bindlessPoolCI.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-	bindlessPoolCI.maxSets = 1;
-	bindlessPoolCI.poolSizeCount = 1;
-	bindlessPoolCI.pPoolSizes = &bindlessImagePoolSize;
-	check(vkCreateDescriptorPool(device.device, &bindlessPoolCI, nullptr, &bindlessPool));
-	setName(device_, bindlessPool, "Bindless Pool");
-
-	VkDescriptorPoolSize ibrPoolSize{};
-	ibrPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	ibrPoolSize.descriptorCount = 3;
-
-	VkDescriptorPoolCreateInfo ibrPoolCI{};
-	ibrPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	ibrPoolCI.maxSets = 1;
-	ibrPoolCI.poolSizeCount = 1;
-	ibrPoolCI.pPoolSizes = &ibrPoolSize;
-	check(vkCreateDescriptorPool(device.device, &ibrPoolCI, nullptr, &ibrPool));
-	setName(device_, ibrPool, "IBR Pool");
-
-	// Sets
-	std::vector<VkDescriptorSetLayout> globalLayouts{ maxFramesInFlight, globalSetLayout };
-	globalSets_.resize(maxFramesInFlight);
-	VkDescriptorSetAllocateInfo allocateInfo{};
-	allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocateInfo.descriptorPool = globalPool_;
-	allocateInfo.descriptorSetCount = maxFramesInFlight;
-	allocateInfo.pSetLayouts = globalLayouts.data();
-	check(vkAllocateDescriptorSets(device.device, &allocateInfo, globalSets_.data()));
-	for (size_t i = 0; i < globalSets_.size(); i++)
-	{
-		setName(device_, globalSets_[i], fmt::format("Global Set {}", i));
-	}
-
-	uint32_t descriptorCount = 2048;
-	VkDescriptorSetVariableDescriptorCountAllocateInfo varaibleInfo{};
-	varaibleInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
-	varaibleInfo.descriptorSetCount = 1;
-	varaibleInfo.pDescriptorCounts = &descriptorCount;
-
-	VkDescriptorSetAllocateInfo bindlessAllocateInfo{};
-	bindlessAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	bindlessAllocateInfo.descriptorPool = bindlessPool;
-	bindlessAllocateInfo.descriptorSetCount = 1;
-	bindlessAllocateInfo.pSetLayouts = &bindlessSetLayout;
-	Connect(bindlessAllocateInfo, varaibleInfo);
-	check(vkAllocateDescriptorSets(device.device, &bindlessAllocateInfo, &bindlessSet_));
-	setName(device_, bindlessSet_, "Bindless Set");
-
-	VkDescriptorSetAllocateInfo ibrAllocateInfo{};
-	ibrAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	ibrAllocateInfo.descriptorPool = ibrPool;
-	ibrAllocateInfo.descriptorSetCount = 1;
-	ibrAllocateInfo.pSetLayouts = &ibrSetLayout;
-	check(vkAllocateDescriptorSets(device.device, &ibrAllocateInfo, &ibrSet));
-	setName(device_, ibrSet, "IBR Set");
-
-	globalUniformBuffers_.resize(maxFramesInFlight);
-	for (size_t i = 0; i < maxFramesInFlight; i++)
-	{
-		globalUniformBuffers_[i] = std::make_unique<Buffer>(device, sizeof(GlobalUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-	}
-	// Write
-	DescriptorWrite writer;
-	for (size_t i = 0; i < maxFramesInFlight; i++)
-	{
-		writer.add(globalSets_[i], 0, 0, BufferType::Uniform, 1, *globalUniformBuffers_[i], 0, VK_WHOLE_SIZE);
-		writer.add(globalSets_[i], 1, 0, BufferType::Storage, 1, *perMeshDrawDataBuffer[i], 0, VK_WHOLE_SIZE);
-		writer.add(globalSets_[i], 2, 0, BufferType::Storage, 1, *lightBuffer[i], 0, VK_WHOLE_SIZE);
-	}
-	writer.write(device_.device);
+	*/
 }
 
-void Scene::loadGLTF(const std::string& path)
+void Scene::loadGLTF(const std::string& path, VkShaderModule vertexShader, VkShaderModule fragmentShader, VkDescriptorSet imageSet, VkPipelineLayout layout)
 {
 	tinygltf::Model model;
 	{
@@ -715,84 +506,10 @@ void Scene::loadGLTF(const std::string& path)
 	writeSet.dstArrayElement = startingElement;
 	writeSet.dstBinding = 1;
 	writeSet.pImageInfo = descImageInfos.data();
-	writeSet.dstSet = bindlessSet_;
+	writeSet.dstSet = imageSet;
 
 	vkUpdateDescriptorSets(device_.device, 1, &writeSet, 0, nullptr);
-
-	struct SpecializationData
-	{
-		VkBool32 alphaMask;
-		float alphaMaskCutoff;
-	};
-
-	const auto opaquePipeline = [&](bool doubleSided, int mode, SpecializationData& data) {
-		VkPipeline pipeline;
-		std::array stages = {
-			CreateInfo::ShaderStage(VK_SHADER_STAGE_VERTEX_BIT, vertexShader_),
-			CreateInfo::ShaderStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader_)
-		};
-
-		auto vertexBinding = StaticVertex::BindingDescription();
-		auto vertexAttributes = StaticVertex::AttributesDescription();
-		auto vertexInputState = CreateInfo::VertexInputState(&vertexBinding, 1, vertexAttributes.data(), vertexAttributes.size());
-
-		auto inputAssemblyState = CreateInfo::InputAssemblyState(getMode(mode));
-
-		auto viewportState = CreateInfo::ViewportState();
-
-		auto rasterizationState = CreateInfo::RasterizationState(
-			VK_FALSE,
-			doubleSided ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE,
-			VK_FRONT_FACE_COUNTER_CLOCKWISE
-		);
-
-		auto multisampleState = CreateInfo::MultisampleState();
-
-		auto depthStencilState = CreateInfo::DepthStencilState();
-
-		auto colorAttachment = CreateInfo::ColorBlendAttachment();
-		auto colorBlendState = CreateInfo::ColorBlendState(&colorAttachment, 1);
-
-		std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-		auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
-
-		VkFormat swapchainFormat = device_.getSurfaceFormat();
-		auto rendering = CreateInfo::Rendering(&swapchainFormat, 1, device_.getDepthFormat());
-
-		std::array<VkSpecializationMapEntry, 2> mapEntries{};
-		mapEntries[0].constantID = 0;
-		mapEntries[0].offset = offsetof(SpecializationData, alphaMask);
-		mapEntries[0].size = sizeof(SpecializationData::alphaMask);
-		mapEntries[1].constantID = 1;
-		mapEntries[1].offset = offsetof(SpecializationData, alphaMaskCutoff);
-		mapEntries[1].size = sizeof(SpecializationData::alphaMaskCutoff);
-		VkSpecializationInfo specInfo{};
-		specInfo.dataSize = sizeof(SpecializationData);
-		specInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
-		specInfo.pMapEntries = mapEntries.data();
-		specInfo.pData = &data;
-		stages[1].pSpecializationInfo = &specInfo;
-
-		VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-		pipelineCreateInfo.stageCount = static_cast<uint32_t>(stages.size());
-		pipelineCreateInfo.pStages = stages.data();
-		pipelineCreateInfo.pVertexInputState = &vertexInputState;
-		pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
-		pipelineCreateInfo.pTessellationState = nullptr;
-		pipelineCreateInfo.pViewportState = &viewportState;
-		pipelineCreateInfo.pRasterizationState = &rasterizationState;
-		pipelineCreateInfo.pMultisampleState = &multisampleState;
-		pipelineCreateInfo.pDepthStencilState = &depthStencilState;
-		pipelineCreateInfo.pColorBlendState = &colorBlendState;
-		pipelineCreateInfo.pDynamicState = &dynamicState;
-		pipelineCreateInfo.layout = pipelineLayout_;
-
-		Connect(pipelineCreateInfo, rendering);
-
-		check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
-		return pipeline;
-	};
-
+/*
 	const auto transparentPipeline = [&](bool doubleSided, int mode) {
 		VkPipeline pipeline;
 		std::array stages = {
@@ -867,7 +584,7 @@ void Scene::loadGLTF(const std::string& path)
 		check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
 		return pipeline;
 	};
-
+*/
 	// Recursive load node fn
 	const auto loadNode = [&](const auto& loadNodeFn, const int nodeId) -> std::unique_ptr<Node> {
 		const auto& node = model.nodes[nodeId];
@@ -941,16 +658,15 @@ void Scene::loadGLTF(const std::string& path)
 				
 				const auto transparent = false; //material.alphaMode == "BLEND";
 
-				SpecializationData data{};
-				data.alphaMask = material.alphaMode == "MASK";
-				data.alphaMaskCutoff = material.alphaCutoff;
+				MaterialCharacteristic matCh{};
+				matCh.doubleSided = material.doubleSided;
+				matCh.mode = primitive.mode;
+				matCh.alphaMask = material.alphaMode == "MASK";
+				matCh.alphaMaskCutoff = material.alphaCutoff;
 				
 				// Pipeline
-				VkPipeline pipeline = transparent ? 
-					transparentPipeline(material.doubleSided, primitive.mode) : 
-					opaquePipeline(material.doubleSided, primitive.mode, data);
+				VkPipeline pipeline = getOrCreatePipeline(matCh, vertexShader, fragmentShader, imageSet, layout);
 			
-
 				gpuMesh->submeshes.push_back(Submesh{
 					.vertexAlloc = vertexAlloc,
 					.indexAlloc = indicesAlloc,
@@ -989,7 +705,7 @@ void Scene::loadGLTF(const std::string& path)
 
 }
 
-void Scene::loadCubeMap(const std::string& path)
+void Scene::loadCubeMap(const std::string& path, VkDescriptorSet ibrSet)
 {
 	auto s = Bench::record();
 	
@@ -1045,16 +761,113 @@ void Scene::loadCubeMap(const std::string& path)
 	auto e = Bench::record();
 	SPDLOG_INFO("Cubemap took: {}ms.", Bench::diff<float>(s, e));
 
-	setName(device_, cubeMap_->Get(), path);
-	skybox_->set(cubeMap_->GetView(), cubeMap_->GetSampler());
+	setName(device_.device, cubeMap_->Get(), path);
 
 	DescriptorWrite writer;
 	writer.add(ibrSet, 0, 0, ImageType::CombinedSampler, 1, irradianceMap_->GetSampler(), irradianceMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	writer.add(ibrSet, 1, 0, ImageType::CombinedSampler, 1, prefilterMap_->GetSampler(), prefilterMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	writer.add(ibrSet, 2, 0, ImageType::CombinedSampler, 1, brdfMap_->GetSampler(), brdfMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	writer.write(device_.device);
-
 }
+
+Scene::Drawbles Scene::getDrawables() const
+{
+	// Group stuff
+	
+	struct RenderObject
+	{
+		glm::mat4 model;
+		const Submesh* submesh;
+	};
+	std::unordered_map<VkPipeline, std::vector<RenderObject>> grouping;
+
+	const auto group = [&](const auto& groupFn, const std::unique_ptr<Node>& node, glm::mat4 parent) -> void {
+		glm::mat4 model = parent * node->getMatrix();
+		if (node->mesh)
+		{
+			for (const auto& submesh : node->mesh->submeshes)
+			{
+				/*
+				IndirectDrawParam param{};
+				param.model = model;
+				param.colorId = submesh.colorId;
+				param.normalId = submesh.normalId;
+				param.mroId = submesh.mroId;
+				param.emissiveId = submesh.emissiveId;
+				indirectParams.push_back(param);
+
+				VkDrawIndexedIndirectCommand command{};
+				command.firstIndex = submesh.firstIndex;
+				command.firstInstance = 0;
+				command.indexCount = submesh.indexCount;
+				command.instanceCount = 1;
+				command.vertexOffset = submesh.vertexOffset;
+				commands.push_back(command);
+				*/
+				auto& group = grouping[submesh.pipeline];
+				group.push_back(RenderObject{ .model = model, .submesh = &submesh });
+			}
+		}
+
+		for (const auto& child : node->childrens)
+		{
+			groupFn(groupFn, child, model);
+		}
+	};
+
+	for (const auto& node : nodes)
+	{
+		group(group, node, glm::mat4(1.0f));
+	}
+
+	std::vector<IndirectDrawParam> indirectParams;
+	std::vector<VkDrawIndexedIndirectCommand> commands;
+	PipelineGroups opaqueGroup;
+
+	size_t objectCounter = 0;
+	for (const auto& group : grouping)
+	{
+		const size_t groupOffset = objectCounter;
+		size_t groupCounter = 0;
+		for (const auto& object : group.second)
+		{
+			IndirectDrawParam param{};
+			param.model = object.model;
+			param.colorId = object.submesh->colorId;
+			param.normalId = object.submesh->normalId;
+			param.mroId = object.submesh->mroId;
+			param.emissiveId = object.submesh->emissiveId;
+			indirectParams.push_back(param);
+
+			VkDrawIndexedIndirectCommand command{};
+			command.firstIndex = object.submesh->firstIndex;
+			command.firstInstance = 0;
+			command.indexCount = object.submesh->indexCount;
+			command.instanceCount = 1;
+			command.vertexOffset = object.submesh->vertexOffset;
+			commands.push_back(command);
+
+			groupCounter++;
+		}
+
+		opaqueGroup[group.first] = { .offset = static_cast<uint32_t>(groupOffset), .count = static_cast<uint32_t>(groupCounter) };
+		objectCounter += groupCounter;
+	}
+
+	return std::make_tuple(opaqueGroup, indirectParams, commands);
+}
+
+VkBuffer Scene::getVertexBuffer() const
+{
+	return *vertexBuffer;
+}
+
+VkBuffer Scene::getIndexBuffer() const
+{
+	return *indexBuffer;
+}
+
+/*
 
 void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView colorView, VkImageView depthView)
 {
@@ -1083,12 +896,6 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 	}
 
 	// Group stuff
-	struct RenderComponent
-	{
-		glm::mat4 model;
-		std::vector<Submesh> meshes;
-	};
-
 	std::vector<RenderComponent> opaqueGroup;
 	std::vector<RenderComponent> transparentGroup;
 
@@ -1159,8 +966,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 		}
 	}
 
-	indirectBuffer->upload(commands.data(), commands.size() * sizeof(VkDrawIndexedIndirectCommand));
-	perMeshDrawDataBuffer[frameCount_]->upload(indirectParams.data(), indirectParams.size() * sizeof(IndirectDrawParam));
+	//indirectBuffer->upload(commands.data(), commands.size() * sizeof(VkDrawIndexedIndirectCommand));
+	//perMeshDrawDataBuffer[frameCount_]->upload(indirectParams.data(), indirectParams.size() * sizeof(IndirectDrawParam));
 
 	// Begin Rendering (Opaque)
 	{
@@ -1355,40 +1162,139 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 		vkCmdEndRendering(commandBuffer);
 	}
 
-	*/
-
 	const VkExtent2D extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
 	// infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, extent);
 
 	skybox_->render(commandBuffer, state.camera_->calculateProjection(), state.camera_->calculateView(), colorView, depthView, extent);
 
-	/*
 	Transition::ShaderReadOptimalToColorAttachment(accum->Get(), commandBuffer);
 	Transition::ShaderReadOptimalToColorAttachment(reveal->Get(), commandBuffer);
-	*/
+	
 
 	frameCount_ = (frameCount_ + 1) % maxFramesInFlight;
 
 	cleanupRecycling();
 }
+*/
+
+VkPipeline Scene::getOrCreatePipeline(const MaterialCharacteristic& character, VkShaderModule vertexShader, VkShaderModule fragmentShader, VkDescriptorSet imageSet, VkPipelineLayout layout)
+{
+	if (auto it = pipelines.find(character); it != pipelines.end())
+	{
+		return it->second;
+	}
+	else
+	{
+		const auto opaquePipeline = [&](bool doubleSided, int mode, bool alphaMask, float alphaMaskCutoff) {
+			VkPipeline pipeline;
+			std::array stages = {
+				CreateInfo::ShaderStage(VK_SHADER_STAGE_VERTEX_BIT, vertexShader),
+				CreateInfo::ShaderStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader)
+			};
+
+			auto vertexBinding = StaticVertex::BindingDescription();
+			auto vertexAttributes = StaticVertex::AttributesDescription();
+			auto vertexInputState = CreateInfo::VertexInputState(&vertexBinding, 1, vertexAttributes.data(), vertexAttributes.size());
+
+			auto inputAssemblyState = CreateInfo::InputAssemblyState(getMode(mode));
+
+			auto viewportState = CreateInfo::ViewportState();
+
+			auto rasterizationState = CreateInfo::RasterizationState(
+				VK_FALSE,
+				doubleSided ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE,
+				VK_FRONT_FACE_COUNTER_CLOCKWISE
+			);
+
+			auto multisampleState = CreateInfo::MultisampleState();
+
+			auto depthStencilState = CreateInfo::DepthStencilState();
+
+			auto colorAttachment = CreateInfo::ColorBlendAttachment();
+			auto colorBlendState = CreateInfo::ColorBlendState(&colorAttachment, 1);
+
+			std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+			auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
+
+			VkFormat swapchainFormat = device_.getSurfaceFormat();
+			auto rendering = CreateInfo::Rendering(&swapchainFormat, 1, device_.getDepthFormat());
+
+			SpecializationData data{};
+			data.alphaMask = alphaMask;
+			data.alphaMaskCutoff = alphaMaskCutoff;
+
+			std::array<VkSpecializationMapEntry, 2> mapEntries{};
+			mapEntries[0].constantID = 0;
+			mapEntries[0].offset = offsetof(SpecializationData, alphaMask);
+			mapEntries[0].size = sizeof(SpecializationData::alphaMask);
+			mapEntries[1].constantID = 1;
+			mapEntries[1].offset = offsetof(SpecializationData, alphaMaskCutoff);
+			mapEntries[1].size = sizeof(SpecializationData::alphaMaskCutoff);
+			VkSpecializationInfo specInfo{};
+			specInfo.dataSize = sizeof(SpecializationData);
+			specInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
+			specInfo.pMapEntries = mapEntries.data();
+			specInfo.pData = &data;
+			stages[1].pSpecializationInfo = &specInfo;
+
+			VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+			pipelineCreateInfo.stageCount = static_cast<uint32_t>(stages.size());
+			pipelineCreateInfo.pStages = stages.data();
+			pipelineCreateInfo.pVertexInputState = &vertexInputState;
+			pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
+			pipelineCreateInfo.pTessellationState = nullptr;
+			pipelineCreateInfo.pViewportState = &viewportState;
+			pipelineCreateInfo.pRasterizationState = &rasterizationState;
+			pipelineCreateInfo.pMultisampleState = &multisampleState;
+			pipelineCreateInfo.pDepthStencilState = &depthStencilState;
+			pipelineCreateInfo.pColorBlendState = &colorBlendState;
+			pipelineCreateInfo.pDynamicState = &dynamicState;
+			pipelineCreateInfo.layout = layout;
+
+			Connect(pipelineCreateInfo, rendering);
+
+			check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
+			return pipeline;
+		};
+		pipelines[character] = opaquePipeline(character.doubleSided, character.mode, character.alphaMask, character.alphaMaskCutoff);
+		return pipelines[character];
+	}
+}
+
+Image& Scene::getCubeMap() const
+{
+	return *cubeMap_;
+}
+
+Image& Scene::getPrefilter() const
+{
+	return *prefilterMap_;
+}
+
+Image& Scene::getIrradiance() const
+{
+	return *irradianceMap_;
+}
+
+Image& Scene::getBRDFMap() const
+{
+	return *brdfMap_;
+}
+
+std::shared_ptr<Buffer> Scene::getCubeBuffer() const
+{
+	return cubeBuffer_;
+}
 
 Scene::~Scene()
 {
-	vkDestroyShaderModule(device_.device, vertexShader_, nullptr);
-	vkDestroyShaderModule(device_.device, fragmentShader_, nullptr);
-	vkDestroyShaderModule(device_.device, transparentVertex_, nullptr);
-	vkDestroyShaderModule(device_.device, transparentFragment_, nullptr);
-
 	const auto deleteNode = [&](const auto& deleteNodeFn, const std::unique_ptr<Node>& node) -> void {
 		if (node->mesh)
 		{
 			for (const auto& submesh : node->mesh->submeshes)
 			{
-				// SPDLOG_INFO("Allocation at offset V: {} I: {} with something like vkCmdDrawIndexed(c, {}, 1, {}, {}, 0)", submesh.vertexAlloc.offset, submesh.indexAlloc.offset, submesh.indexCount, submesh.firstIndex, submesh.vertexOffset);
 				vmaVirtualFree(virtualVertex_, submesh.vertexAlloc);
 				vmaVirtualFree(virtualIndices_, submesh.indexAlloc);
-
-				vkDestroyPipeline(device_.device, submesh.pipeline, nullptr);
 			}
 		}
 
@@ -1403,24 +1309,12 @@ Scene::~Scene()
 		deleteNode(deleteNode, node);
 	}
 
+	for (const auto& pipeline : pipelines)
+	{
+		vkDestroyPipeline(device_.device, pipeline.second, nullptr);
+	}
 	
 	textures.clear();
-	globalUniformBuffers_.clear();
-
-	vkDestroyDescriptorPool(device_.device, globalPool_, nullptr);
-	vkDestroyDescriptorPool(device_.device, bindlessPool, nullptr);
-	vkDestroyDescriptorPool(device_.device, ibrPool, nullptr);
-
-	vkDestroyDescriptorSetLayout(device_.device, globalSetLayout, nullptr);
-	vkDestroyDescriptorSetLayout(device_.device, bindlessSetLayout, nullptr);
-	vkDestroyDescriptorSetLayout(device_.device, ibrSetLayout, nullptr);
-
-;	vkDestroyPipelineLayout(device_.device, pipelineLayout_, nullptr);
-
-	vkDestroyPipeline(device_.device, compositingPipeline, nullptr);
-	vkDestroyPipelineLayout(device_.device, compositingPipelineLayout, nullptr);
-	vkDestroyDescriptorSetLayout(device_.device, compositingSetLayout, nullptr);
-	vkDestroyDescriptorPool(device_.device, compositingPool, nullptr);
 
 	vmaDestroyVirtualBlock(virtualVertex_);
 	vmaDestroyVirtualBlock(virtualIndices_);
@@ -1429,6 +1323,7 @@ Scene::~Scene()
 	indexBuffer.reset();
 }
 
+/*
 void Scene::recreateAccumReveal(int width, int height)
 {	
 	if (accum)
@@ -1529,6 +1424,7 @@ void Scene::cleanupRecycling()
 		return pair.second <= 0;
 	});
 }
+*/
 
 VmaVirtualAllocation Scene::performAllocation(VmaVirtualBlock block, VkDeviceSize size, VkDeviceSize& offset)
 {
