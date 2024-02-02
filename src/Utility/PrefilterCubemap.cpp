@@ -173,7 +173,7 @@ std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer comman
 	imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	auto img = std::make_unique<Image>(device_, imageCI);
 
-	Transition::UndefinedToColorAttachment(img->Get(), commandBuffer, range);
+	Transition::UndefinedToColorAttachment(img->get(), commandBuffer, range);
 
 	DescriptorWrite writer;
 	writer.add(prefilterSet, 1, 0, ImageType::CombinedSampler, 1, sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -206,9 +206,9 @@ std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer comman
 			VkImageView iv;
 			VkImageViewCreateInfo imageViewCI{};
 			imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-			imageViewCI.image = img->Get();
+			imageViewCI.image = img->get();
 			imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-			imageViewCI.format = img->GetFormat();
+			imageViewCI.format = img->getFormat();
 			imageViewCI.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, mipLevel, 1, 0, 6 };
 			check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &iv));
 			return iv;
@@ -245,16 +245,16 @@ std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer comman
 	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
 	// image + sampler
-	img->AttachCubeMapImageView(range);
+	img->attachCubeMapImageView(range);
 	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(maxMipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
-	img->AttachSampler(samplerCI);
+	img->attachSampler(samplerCI);
 
 	return img;
 }
 
 std::unique_ptr<Image> PrefilterCubemap::precomputeFilter(VkCommandBuffer commandBuffer, Image* image, int dim, std::vector<VkImageView>& recycling)
 {
-	return precomputeFilter(commandBuffer, image->GetView(), image->GetSampler(), dim, recycling);
+	return precomputeFilter(commandBuffer, image->getView(), image->getSampler(), dim, recycling);
 }
 
 std::unique_ptr<Image> PrefilterCubemap::precomputerBRDF(VkCommandBuffer commandBuffer, int width, int height)
@@ -264,9 +264,9 @@ std::unique_ptr<Image> PrefilterCubemap::precomputerBRDF(VkCommandBuffer command
 	VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, 1, VK_FORMAT_R16G16_SFLOAT,
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 	auto img = std::make_unique<Image>(device_, imageCI);
-	img->AttachImageView(range);
+	img->attachImageView(range);
 
-	Transition::UndefinedToColorAttachment(img->Get(), commandBuffer, range);
+	Transition::UndefinedToColorAttachment(img->get(), commandBuffer, range);
 
 	VkDebugUtilsLabelEXT label{};
 	label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
@@ -279,7 +279,7 @@ std::unique_ptr<Image> PrefilterCubemap::precomputerBRDF(VkCommandBuffer command
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	colorAttachment.clearValue = { 0.f, 0.f, 0.f, 1.f };
-	colorAttachment.imageView = img->GetView();
+	colorAttachment.imageView = img->getView();
 
 	VkRenderingInfo renderInfo{};
 	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -307,7 +307,7 @@ std::unique_ptr<Image> PrefilterCubemap::precomputerBRDF(VkCommandBuffer command
 	vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 
 	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
-	img->AttachSampler(samplerCI);
+	img->attachSampler(samplerCI);
 
 	return img;
 }

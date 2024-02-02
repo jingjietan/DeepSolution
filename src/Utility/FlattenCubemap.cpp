@@ -111,10 +111,10 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 	imageCI.arrayLayers = 6; //for cubemap
 	imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	auto img = std::make_unique<Image>(device_, imageCI);
-	img->AttachCubeMapImageView(range);
+	img->attachCubeMapImageView(range);
 
 	// transition...
-	Transition::UndefinedToColorAttachment(img->Get(), commandBuffer, range);
+	Transition::UndefinedToColorAttachment(img->get(), commandBuffer, range);
 
 	// write to descriptor
 	DescriptorWrite writer;
@@ -128,7 +128,7 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 
 	VkRenderingAttachmentInfo colorAttachment{};
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAttachment.imageView = img->GetView();
+	colorAttachment.imageView = img->getView();
 	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -166,14 +166,14 @@ std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Vk
 
 	// image + sampler
 	VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(mipLevels, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
-	img->AttachSampler(samplerCI);
+	img->attachSampler(samplerCI);
 
 	return img;
 }
 
 std::unique_ptr<Image> FlattenCubemap::convert(VkCommandBuffer commandBuffer, Image* image, int dim)
 {
-	return convert(commandBuffer, image->GetView(), image->GetSampler(), dim);
+	return convert(commandBuffer, image->getView(), image->getSampler(), dim);
 }
 
 FlattenCubemap::~FlattenCubemap()

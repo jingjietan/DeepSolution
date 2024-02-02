@@ -462,7 +462,7 @@ void Scene::loadGLTF(const std::string& path, VkShaderModule vertexShader, VkSha
 		imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 		auto ptr = std::make_unique<Image>(device_, imageInfo);
-		ptr->AttachImageView(range);
+		ptr->attachImageView(range);
 
 		VkSamplerCreateInfo samplerInfo{};
 		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -476,24 +476,24 @@ void Scene::loadGLTF(const std::string& path, VkShaderModule vertexShader, VkSha
 		samplerInfo.anisotropyEnable = VK_TRUE;
 		samplerInfo.maxAnisotropy = device_.deviceProperties.limits.maxSamplerAnisotropy;
 		
-		ptr->AttachSampler(samplerInfo);
+		ptr->attachSampler(samplerInfo);
 
 		size_t imageSize = image.image.size() * sizeof(uint8_t);
 		Buffer stagingBuffer(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 		stagingBuffer.upload(image.image.data(), imageSize);
 
 		CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
-			Transition::UndefinedToTransferDestination(ptr->Get(), commandBuffer, range);
+			Transition::UndefinedToTransferDestination(ptr->get(), commandBuffer, range);
 
-			ptr->Upload(commandBuffer, stagingBuffer);
+			ptr->upload(commandBuffer, stagingBuffer);
 
-			Image::generateMipmaps(ptr->Get(), image.width, image.height, mipLevels, commandBuffer);
+			Image::generateMipmaps(ptr->get(), image.width, image.height, mipLevels, commandBuffer);
 		});
 
 		VkDescriptorImageInfo descImageInfo{};
 		descImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		descImageInfo.imageView = ptr->GetView();
-		descImageInfo.sampler = ptr->GetSampler();
+		descImageInfo.imageView = ptr->getView();
+		descImageInfo.sampler = ptr->getSampler();
 		descImageInfos.push_back(descImageInfo);
 
 		textures.push_back(std::move(ptr));
@@ -737,14 +737,14 @@ void Scene::loadCubeMap(const std::string& path, VkDescriptorSet ibrSet)
 	stbi_image_free(data);
 
 	auto img = std::make_unique<Image>(device_, imageCI);
-	img->AttachImageView(img->GetFullRange());
-	img->AttachSampler(samplerInfo);
+	img->attachImageView(img->getFullRange());
+	img->attachSampler(samplerInfo);
 
 	std::vector<VkImageView> temp;
 	
 	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
 		img->UndefinedToTransferDestination(commandBuffer);
-		img->Upload(commandBuffer, stagingBuffer);
+		img->upload(commandBuffer, stagingBuffer);
 		img->generateMaxMipmaps(commandBuffer);
 
 		cubeMap_ = flattenCubemap_->convert(commandBuffer, img.get(), 1024);
@@ -769,12 +769,12 @@ void Scene::loadCubeMap(const std::string& path, VkDescriptorSet ibrSet)
 		vkDestroyImageView(device_.device, t, nullptr);
 	}
 
-	setName(device_.device, cubeMap_->Get(), path);
+	setName(device_.device, cubeMap_->get(), path);
 
 	DescriptorWrite writer;
-	writer.add(ibrSet, 0, 0, ImageType::CombinedSampler, 1, irradianceMap_->GetSampler(), irradianceMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	writer.add(ibrSet, 1, 0, ImageType::CombinedSampler, 1, prefilterMap_->GetSampler(), prefilterMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	writer.add(ibrSet, 2, 0, ImageType::CombinedSampler, 1, brdfMap_->GetSampler(), brdfMap_->GetView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.add(ibrSet, 0, 0, ImageType::CombinedSampler, 1, irradianceMap_->getSampler(), irradianceMap_->getView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.add(ibrSet, 1, 0, ImageType::CombinedSampler, 1, prefilterMap_->getSampler(), prefilterMap_->getView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	writer.add(ibrSet, 2, 0, ImageType::CombinedSampler, 1, brdfMap_->getSampler(), brdfMap_->getView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	writer.write(device_.device);
 }
 
@@ -1027,13 +1027,13 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 	{ // Render Pass (Transparent)
 		std::array<VkRenderingAttachmentInfo, 2> attachments{};
 		attachments[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		attachments[0].imageView = accum->GetView();
+		attachments[0].imageView = accum->getView();
 		attachments[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachments[0].clearValue = { 0.f, 0.f, 0.f, 0.f };
 		attachments[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		attachments[1].imageView = reveal->GetView();
+		attachments[1].imageView = reveal->getView();
 		attachments[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1098,8 +1098,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 		vkCmdEndRendering(commandBuffer);
 	}
 
-	Transition::ColorAttachmentToShaderReadOptimal(accum->Get(), commandBuffer);
-	Transition::ColorAttachmentToShaderReadOptimal(reveal->Get(), commandBuffer);
+	Transition::ColorAttachmentToShaderReadOptimal(accum->get(), commandBuffer);
+	Transition::ColorAttachmentToShaderReadOptimal(reveal->get(), commandBuffer);
 
 	{ // Compositing
 		VkRenderingAttachmentInfo colorAttachment{};
@@ -1158,8 +1158,8 @@ void Scene::draw(VkCommandBuffer commandBuffer, const State& state, VkImageView 
 
 	skybox_->render(commandBuffer, state.camera_->calculateProjection(), state.camera_->calculateView(), colorView, depthView, extent);
 
-	Transition::ShaderReadOptimalToColorAttachment(accum->Get(), commandBuffer);
-	Transition::ShaderReadOptimalToColorAttachment(reveal->Get(), commandBuffer);
+	Transition::ShaderReadOptimalToColorAttachment(accum->get(), commandBuffer);
+	Transition::ShaderReadOptimalToColorAttachment(reveal->get(), commandBuffer);
 	
 
 	frameCount_ = (frameCount_ + 1) % maxFramesInFlight;
@@ -1341,7 +1341,7 @@ void Scene::recreateAccumReveal(int width, int height)
 
 	accum = std::make_unique<Image>(device_, accumCI);
 
-	accum->AttachImageView(VK_IMAGE_ASPECT_COLOR_BIT);
+	accum->attachImageView(VK_IMAGE_ASPECT_COLOR_BIT);
 
 	VkSamplerCreateInfo samplerInfo{};
 	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -1350,7 +1350,7 @@ void Scene::recreateAccumReveal(int width, int height)
 	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
 	samplerInfo.minFilter = VK_FILTER_LINEAR;
 	samplerInfo.magFilter = VK_FILTER_LINEAR;
-	accum->AttachSampler(samplerInfo);
+	accum->attachSampler(samplerInfo);
 
 	VkImageCreateInfo revealCI{};
 	revealCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1366,24 +1366,24 @@ void Scene::recreateAccumReveal(int width, int height)
 
 	reveal = std::make_unique<Image>(device_, revealCI);
 
-	reveal->AttachImageView(VK_IMAGE_ASPECT_COLOR_BIT);
+	reveal->attachImageView(VK_IMAGE_ASPECT_COLOR_BIT);
 
-	reveal->AttachSampler(samplerInfo);
+	reveal->attachSampler(samplerInfo);
 
 	CreateInfo::performOneTimeAction(device_.device, device_.graphicsQueue.queue, device_.graphicsPool, [&](VkCommandBuffer commandBuffer) {
-		Transition::UndefinedToColorAttachment(accum->Get(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
-		Transition::UndefinedToColorAttachment(reveal->Get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+		Transition::UndefinedToColorAttachment(accum->get(), commandBuffer, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+		Transition::UndefinedToColorAttachment(reveal->get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 	});
 
 	VkDescriptorImageInfo accumImageInfo{};
 	accumImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	accumImageInfo.imageView = accum->GetView();
-	accumImageInfo.sampler = accum->GetSampler();
+	accumImageInfo.imageView = accum->getView();
+	accumImageInfo.sampler = accum->getSampler();
 
 	VkDescriptorImageInfo revealImageInfo{};
 	revealImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	revealImageInfo.imageView = reveal->GetView();
-	revealImageInfo.sampler = reveal->GetSampler();
+	revealImageInfo.imageView = reveal->getView();
+	revealImageInfo.sampler = reveal->getSampler();
 
 	auto writeSet = [](VkDevice device, VkDescriptorImageInfo& imageInfo, uint32_t binding, VkDescriptorSet set)
 	{

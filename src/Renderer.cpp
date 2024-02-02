@@ -113,7 +113,7 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 	if (!skybox_)
 	{
 		skybox_ = std::make_unique<Skybox>(device_, scene_.getCubeBuffer());
-		skybox_->set(scene_.getCubeMap().GetView(), scene_.getCubeMap().GetSampler());
+		skybox_->set(scene_.getCubeMap().getView(), scene_.getCubeMap().getSampler());
 	}
 	
 
@@ -192,13 +192,13 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 	{ // Render Pass (Transparent)
 		std::array<VkRenderingAttachmentInfo, 2> attachments{};
 		attachments[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		attachments[0].imageView = accum->GetView();
+		attachments[0].imageView = accum->getView();
 		attachments[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachments[0].clearValue = { 0.f, 0.f, 0.f, 0.f };
 		attachments[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		attachments[1].imageView = reveal->GetView();
+		attachments[1].imageView = reveal->getView();
 		attachments[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -263,8 +263,8 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 		vkCmdEndRendering(commandBuffer);
 	}
 
-	Transition::ColorAttachmentToShaderReadOptimal(accum->Get(), commandBuffer);
-	Transition::ColorAttachmentToShaderReadOptimal(reveal->Get(), commandBuffer);
+	Transition::ColorAttachmentToShaderReadOptimal(accum->get(), commandBuffer);
+	Transition::ColorAttachmentToShaderReadOptimal(reveal->get(), commandBuffer);
 
 	{ // Compositing
 		VkRenderingAttachmentInfo colorAttachment{};
@@ -324,8 +324,8 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 
 	skybox_->render(commandBuffer, state.camera_->calculateProjection(), state.camera_->calculateView(), colorView, depthView, extent);
 
-	//Transition::ShaderReadOptimalToColorAttachment(accum->Get(), commandBuffer);
-	//Transition::ShaderReadOptimalToColorAttachment(reveal->Get(), commandBuffer);
+	//Transition::ShaderReadOptimalToColorAttachment(accum->get(), commandBuffer);
+	//Transition::ShaderReadOptimalToColorAttachment(reveal->get(), commandBuffer);
 
 	frameCount_ = (frameCount_ + 1) % maxFramesInFlight;
 }

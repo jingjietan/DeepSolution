@@ -12,20 +12,20 @@ class Image
 public:
 	Image(Device& device, const VkImageCreateInfo& imageInfo);
 
-	void AttachImageView(VkImageAspectFlags flags);
-	void AttachImageView(const VkImageSubresourceRange& range);
-	void AttachCubeMapImageView(const VkImageSubresourceRange& range);
-	void AttachSampler(const VkSamplerCreateInfo& samplerCI);
-	void Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const;
-	void Upload(VkCommandBuffer commandBuffer, VkBuffer buffer, const VkImageSubresourceLayers& target) const;
+	void attachImageView(VkImageAspectFlags flags);
+	void attachImageView(const VkImageSubresourceRange& range);
+	void attachCubeMapImageView(const VkImageSubresourceRange& range);
+	void attachSampler(const VkSamplerCreateInfo& samplerCI);
+	void upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const;
+	void upload(VkCommandBuffer commandBuffer, VkBuffer buffer, const VkImageSubresourceLayers& target) const;
 
-	VkImage Get() const;
-	VkImageView GetView() const;
-	VkSampler GetSampler() const;
-	VkFormat GetFormat() const;
-	uint32_t GetMipLevels() const;
-	uint32_t GetArrayLevels() const;
-	VkImageSubresourceRange GetFullRange(VkImageAspectFlags flag = VK_IMAGE_ASPECT_COLOR_BIT) const;
+	VkImage get() const;
+	VkImageView getView() const;
+	VkSampler getSampler() const;
+	VkFormat getFormat() const;
+	uint32_t getMipLevels() const;
+	uint32_t getArrayLevels() const;
+	VkImageSubresourceRange getFullRange(VkImageAspectFlags flag = VK_IMAGE_ASPECT_COLOR_BIT) const;
 
 	static uint32_t calculateMaxMiplevels(int width, int height);
 	/**

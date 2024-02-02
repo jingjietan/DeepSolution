@@ -16,7 +16,7 @@ Image::Image(Device& device, const VkImageCreateInfo& imageInfo):
 	check(vmaCreateImage(device_.allocator, &imageInfo, &allocCI, &image_, &allocation_, nullptr));
 }
 
-void Image::AttachImageView(VkImageAspectFlags flags)
+void Image::attachImageView(VkImageAspectFlags flags)
 {
 	assert(image_ && "Image is not initialised!");
 	VkImageViewCreateInfo imageViewCI{};
@@ -29,7 +29,7 @@ void Image::AttachImageView(VkImageAspectFlags flags)
 	check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &imageView_));
 }
 
-void Image::AttachImageView(const VkImageSubresourceRange& range)
+void Image::attachImageView(const VkImageSubresourceRange& range)
 {
 	assert(image_ && "Image is not initialised!");
 	VkImageViewCreateInfo imageViewCI{};
@@ -42,7 +42,7 @@ void Image::AttachImageView(const VkImageSubresourceRange& range)
 	check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &imageView_));
 }
 
-void Image::AttachCubeMapImageView(const VkImageSubresourceRange& range)
+void Image::attachCubeMapImageView(const VkImageSubresourceRange& range)
 {
     assert(image_ && "Image is not initialised!");
     VkImageViewCreateInfo imageViewCI{};
@@ -55,13 +55,13 @@ void Image::AttachCubeMapImageView(const VkImageSubresourceRange& range)
     check(vkCreateImageView(device_.device, &imageViewCI, nullptr, &imageView_));
 }
 
-void Image::AttachSampler(const VkSamplerCreateInfo& samplerCI)
+void Image::attachSampler(const VkSamplerCreateInfo& samplerCI)
 {
 	assert(image_ && "Image is not initialised!");
 	check(vkCreateSampler(device_.device, &samplerCI, nullptr, &sampler_));
 }
 
-void Image::Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const
+void Image::upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const
 {
 	VkBufferImageCopy2 imageCopy{};
 	imageCopy.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2;
@@ -80,7 +80,7 @@ void Image::Upload(VkCommandBuffer commandBuffer, VkBuffer buffer) const
 	vkCmdCopyBufferToImage2(commandBuffer, &copyInfo);
 }
 
-void Image::Upload(VkCommandBuffer commandBuffer, VkBuffer buffer, const VkImageSubresourceLayers& target) const
+void Image::upload(VkCommandBuffer commandBuffer, VkBuffer buffer, const VkImageSubresourceLayers& target) const
 {
     VkBufferImageCopy2 imageCopy{};
     imageCopy.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2;
@@ -99,37 +99,37 @@ void Image::Upload(VkCommandBuffer commandBuffer, VkBuffer buffer, const VkImage
     vkCmdCopyBufferToImage2(commandBuffer, &copyInfo);
 }
 
-VkImage Image::Get() const
+VkImage Image::get() const
 {
 	return image_;
 }
 
-VkImageView Image::GetView() const
+VkImageView Image::getView() const
 {
 	return imageView_;
 }
 
-VkSampler Image::GetSampler() const
+VkSampler Image::getSampler() const
 {
 	return sampler_;
 }
 
-VkFormat Image::GetFormat() const
+VkFormat Image::getFormat() const
 {
     return format_;
 }
 
-uint32_t Image::GetMipLevels() const
+uint32_t Image::getMipLevels() const
 {
     return mipLevels;
 }
 
-uint32_t Image::GetArrayLevels() const
+uint32_t Image::getArrayLevels() const
 {
     return arrayLevels;
 }
 
-VkImageSubresourceRange Image::GetFullRange(VkImageAspectFlags flag) const
+VkImageSubresourceRange Image::getFullRange(VkImageAspectFlags flag) const
 {
     return { flag, 0, mipLevels, 0, arrayLevels };
 }
@@ -315,7 +315,7 @@ void Image::UndefinedToTransferDestination(VkCommandBuffer commandBuffer)
     imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     imageBarrier.image = image_;
-    imageBarrier.subresourceRange = GetFullRange();
+    imageBarrier.subresourceRange = getFullRange();
 
     VkDependencyInfo dependency{};
     dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -338,7 +338,7 @@ void Image::ColorAttachmentToTransferDestination(VkCommandBuffer commandBuffer) 
     imageBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     imageBarrier.image = image_;
-    imageBarrier.subresourceRange = GetFullRange();
+    imageBarrier.subresourceRange = getFullRange();
 
     VkDependencyInfo depedency{};
     depedency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -361,7 +361,7 @@ void Image::ColorAttachmentToShaderReadOptimal(VkCommandBuffer commandBuffer) co
     imageBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     imageBarrier.image = image_;
-    imageBarrier.subresourceRange = GetFullRange();
+    imageBarrier.subresourceRange = getFullRange();
 
     VkDependencyInfo depedency{};
     depedency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
