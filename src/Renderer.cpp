@@ -158,17 +158,13 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 
 		vkCmdBeginRendering(commandBuffer, &renderInfo);
 
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = state.camera_->viewportHeight;
-		viewport.width = state.camera_->viewportWidth;
-		viewport.height = -state.camera_->viewportHeight;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
+		const VkExtent2D extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
+
+		VkViewport viewport = CreateInfo::Viewport(extent);
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
 		VkRect2D scissor{};
-		scissor.extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
+		scissor.extent = extent;
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 		size_t offset = 0;
