@@ -13,6 +13,7 @@
 #include "Core/DescriptorWrite.h"
 #include "Core/Transition.h"
 #include "Core/Framebuffer.h"
+#include "Render/Bloom.h"
 
 Renderer::Renderer(Device& device, Scene& scene): device_(device), scene_(scene), maxFramesInFlight(device_.getMaxFramesInFlight())
 {
@@ -55,7 +56,7 @@ Renderer::Renderer(Device& device, Scene& scene): device_(device), scene_(scene)
 	pipelineLayout_ = creator.createPipelineLayout(device_.device, std::array{ globalSetLayout, bindlessSetLayout, ibrSetLayout }, &range);
 
 	// Rendering techniques
-	
+	bloom_ = std::make_unique<Bloom>(device_);
 
 	// Pool
 	globalPool_ = creator.createPool("Global Set", device_.device, maxFramesInFlight);
@@ -170,7 +171,7 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 		VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 		hdrImage_ = std::make_unique<Image>(device_, imageCI);
 		hdrImage_->attachImageView(hdrImage_->getFullRange());
-		VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1, 
+		VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, 
 			VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
 
@@ -251,21 +252,6 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 		framebuffer.endRendering(commandBuffer);
 
 		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
-	}
-
-	hdrImage_->ColorAttachmentToShaderReadOptimal(commandBuffer);
-
-	{ // Draw to swapchain image
-		Framebuffer framebuffer(extent);
-		framebuffer.addColorAttachment(colorView);
-		framebuffer.beginRendering(commandBuffer, {
-			{FramebufferType::Color, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE, {}} //don't care as we are drawing over all pixels
-		});
-
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, hdrPipeline_.layout, 0, 1, &hdrSet, 0, nullptr);
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, hdrPipeline_.pipeline);
-		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
-		framebuffer.endRendering(commandBuffer);
 	}
 
 	/* Transparent is WIP
@@ -400,11 +386,31 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 	}
 	*/
 
-	// infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, extent);
+	// infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], hdrImage_->getView(), depthView, extent);
 
-	skybox_->render(commandBuffer, state.camera_->calculateProjection(), state.camera_->calculateView(), colorView, depthView, extent);
+	skybox_->render(commandBuffer, state.camera_->calculateProjection(), state.camera_->calculateView(), hdrImage_->getView(), depthView, extent);
+
+	bloom_->doBloom(commandBuffer, extent, hdrImage_->get(), hdrImage_->getView(), colorView);
+	/*
+	hdrImage_->ColorAttachmentToShaderReadOptimal(commandBuffer);
+
+	
+	{ // Draw to swapchain image
+		Framebuffer framebuffer(extent);
+		framebuffer.addColorAttachment(colorView);
+		framebuffer.beginRendering(commandBuffer, {
+			{FramebufferType::Color, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE, {}} //don't care as we are drawing over all pixels
+		});
+
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, hdrPipeline_.layout, 0, 1, &hdrSet, 0, nullptr);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, hdrPipeline_.pipeline);
+		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		framebuffer.endRendering(commandBuffer);
+	}
+	
 
 	hdrImage_->ShaderReadOptimalToColorAttachment(commandBuffer);
+	*/
 
 	//Transition::ShaderReadOptimalToColorAttachment(accum->get(), commandBuffer);
 	//Transition::ShaderReadOptimalToColorAttachment(reveal->get(), commandBuffer);

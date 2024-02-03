@@ -54,7 +54,7 @@ Skybox::Skybox(Device& device, const std::shared_ptr<Buffer>& cubeBuffer) : devi
 		std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 		auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
 
-		VkFormat format = device_.getSurfaceFormat();
+		VkFormat format = VK_FORMAT_R32G32B32A32_SFLOAT;
 		auto rendering = CreateInfo::Rendering(&format, 1, device_.getDepthFormat());
 
 		VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };

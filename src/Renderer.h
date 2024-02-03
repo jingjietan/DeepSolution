@@ -12,6 +12,7 @@ class Buffer;
 class InfiniteGrid;
 class Skybox;
 class FlattenCubemap;
+class Bloom;
 class IrradianceCubemap;
 class PrefilterCubemap;
 
@@ -60,6 +61,8 @@ private:
 
 	PipelineInfo<1> hdrPipeline_;
 	std::vector <std::pair<std::unique_ptr<Image>, int>> hdrBin_;
+
+	std::unique_ptr<Bloom> bloom_;
 
 	std::vector<std::unique_ptr<Buffer>> globalUniformBuffers_;
 	std::vector<VkDescriptorSet> globalSets_;
