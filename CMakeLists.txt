@@ -79,7 +79,7 @@ add_executable (DeepSolution
     "src/Renderer.h"
     "src/Renderer.cpp"
     "src/Light.h"
-)
+ "src/Core/Framebuffer.h" "src/Core/Framebuffer.cpp")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Headers GPUOpen::VulkanMemoryAllocator)
 target_link_libraries(${PROJECT_NAME} PRIVATE volk::volk)

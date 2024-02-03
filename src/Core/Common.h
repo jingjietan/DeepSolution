@@ -34,6 +34,30 @@ void check(auto condition, const std::string& message = "", const std::source_lo
 	check(static_cast<bool>(condition), message, location);
 }
 
+inline bool operator!=(const VkExtent2D& lhs, const VkExtent2D& rhs) {
+	return lhs.width != rhs.width || lhs.height != rhs.height;
+};
+
+template<uint32_t SetCount>
+struct PipelineInfo
+{
+	std::array<VkDescriptorSetLayout, SetCount> setLayouts;
+	VkDescriptorPool pool;
+	VkPipelineLayout layout;
+	VkPipeline pipeline;
+
+	void clear(VkDevice device)
+	{
+		for (const auto& layout : setLayouts)
+		{
+			vkDestroyDescriptorSetLayout(device, layout, nullptr);
+		}
+		vkDestroyDescriptorPool(device, pool, nullptr);
+		vkDestroyPipelineLayout(device, layout, nullptr);
+		vkDestroyPipeline(device, pipeline, nullptr);
+	}
+};
+
 //
 namespace CreateInfo {
 	VkFence createFence(VkDevice device, VkFenceCreateFlags flags);

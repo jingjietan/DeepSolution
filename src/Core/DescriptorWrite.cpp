@@ -145,13 +145,13 @@ VkDescriptorPool DescriptorCreator::createPool(const std::string& name, VkDevice
 	return descPool;
 }
 
-VkPipelineLayout DescriptorCreator::createPipelineLayout(VkDevice device, const std::vector<VkDescriptorSetLayout>& layouts, VkPushConstantRange* range)
+VkPipelineLayout DescriptorCreator::createPipelineLayout(VkDevice device, const VkDescriptorSetLayout* pLayouts, uint32_t layoutCount, VkPushConstantRange* range)
 {
 	VkPipelineLayout layout;
 	VkPipelineLayoutCreateInfo pipelineLayoutCI{};
 	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutCI.pSetLayouts = layouts.data();
-	pipelineLayoutCI.setLayoutCount = static_cast<uint32_t>(layouts.size());
+	pipelineLayoutCI.pSetLayouts = pLayouts;
+	pipelineLayoutCI.setLayoutCount = layoutCount;
 	if (range)
 	{
 		pipelineLayoutCI.pPushConstantRanges = range;

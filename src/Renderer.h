@@ -15,19 +15,6 @@ class FlattenCubemap;
 class IrradianceCubemap;
 class PrefilterCubemap;
 
-struct GlobalUniform
-{
-	glm::mat4 view;
-	glm::mat4 projection;
-	glm::vec3 viewPos;
-};
-
-
-struct alignas(16) LightUpload // base alignment
-{
-	int32_t count;
-};
-
 class Renderer
 {
 public:
@@ -41,6 +28,8 @@ public:
 	VkDescriptorSet getImageSet() const;
 	VkDescriptorSet getIBRSet() const;
 	VkPipelineLayout getPipelineLayout() const;
+
+	void cleanupFrameDependentItems();
 
 	~Renderer();
 private:
@@ -65,6 +54,12 @@ private:
 	VkDescriptorSetLayout bindlessSetLayout{};
 
 	VkPipelineLayout pipelineLayout_{};
+
+	std::unique_ptr<Image> hdrImage_;
+	VkDescriptorSet hdrSet;
+
+	PipelineInfo<1> hdrPipeline_;
+	std::vector <std::pair<std::unique_ptr<Image>, int>> hdrBin_;
 
 	std::vector<std::unique_ptr<Buffer>> globalUniformBuffers_;
 	std::vector<VkDescriptorSet> globalSets_;

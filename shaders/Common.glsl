@@ -30,5 +30,5 @@ vec2 getQuadPosition(uint index) {
 }
 
 vec2 getQuadCoords(vec2 position) {
-	return 0.5 * position + vec2(0.5);
+	return 0.5 * vec2(position.x , -position.y) + vec2(0.5);
 }

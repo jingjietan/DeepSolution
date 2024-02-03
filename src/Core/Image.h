@@ -23,6 +23,7 @@ public:
 	VkImageView getView() const;
 	VkSampler getSampler() const;
 	VkFormat getFormat() const;
+	VkExtent2D getExtent() const;
 	uint32_t getMipLevels() const;
 	uint32_t getArrayLevels() const;
 	VkImageSubresourceRange getFullRange(VkImageAspectFlags flag = VK_IMAGE_ASPECT_COLOR_BIT) const;
@@ -42,16 +43,16 @@ public:
 	void generateMaxCubeMipmaps(VkCommandBuffer commandBuffer);
 
 	// Transition function
-	//void UndefinedToColorAttachment(VkCommandBuffer commandBuffer);
+	void UndefinedToColorAttachment(VkCommandBuffer commandBuffer) const;
 	//void UndefinedToDepthStencilAttachment(VkCommandBuffer commandBuffer);
-	void UndefinedToTransferDestination(VkCommandBuffer commandBuffer);
+	void UndefinedToTransferDestination(VkCommandBuffer commandBuffer) const;
 	void ColorAttachmentToTransferDestination(VkCommandBuffer commandBuffer) const;
 	//void TransferDestinationToPresentable(VkCommandBuffer commandBuffer);
 	//void TransferDestinationToShaderReadOptimal(VkCommandBuffer commandBuffer);
 	void ColorAttachmentToShaderReadOptimal(VkCommandBuffer commandBuffer) const;
 	//void ColorAttachmentToTransferSource(VkCommandBuffer commandBuffer);
 	//void ColorAttachmentToPresentable(VkCommandBuffer commandBuffer);
-	//void ShaderReadOptimalToColorAttachment(VkCommandBuffer commandBuffer);
+	void ShaderReadOptimalToColorAttachment(VkCommandBuffer commandBuffer) const;
 
 	~Image();
 private:

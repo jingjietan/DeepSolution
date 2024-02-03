@@ -12,6 +12,7 @@
 #include <fmt/format.h>
 #include "Core/DescriptorWrite.h"
 #include "Core/Transition.h"
+#include "Core/Framebuffer.h"
 
 Renderer::Renderer(Device& device, Scene& scene): device_(device), scene_(scene), maxFramesInFlight(device_.getMaxFramesInFlight())
 {
@@ -51,7 +52,7 @@ Renderer::Renderer(Device& device, Scene& scene): device_(device), scene_(scene)
 	VkPushConstantRange range{};
 	range.size = sizeof(uint32_t);
 	range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	pipelineLayout_ = creator.createPipelineLayout(device_.device, { globalSetLayout, bindlessSetLayout, ibrSetLayout }, &range);
+	pipelineLayout_ = creator.createPipelineLayout(device_.device, std::array{ globalSetLayout, bindlessSetLayout, ibrSetLayout }, &range);
 
 	// Rendering techniques
 	
@@ -91,10 +92,96 @@ Renderer::Renderer(Device& device, Scene& scene): device_(device), scene_(scene)
 		writer.add(globalSets_[i], 2, 0, BufferType::Storage, 1, *lightBuffer[i], 0, VK_WHOLE_SIZE);
 	}
 	writer.write(device_.device);
+
+	// HDR
+	DescriptorCreator hdrCreator;
+	hdrCreator.add("HDR To Image", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
+	hdrPipeline_.setLayouts[0] = hdrCreator.createLayout("HDR To Image", device_.device);
+	hdrPipeline_.pool = hdrCreator.createPool("HDR To Image", device_.device);
+	hdrCreator.allocateSets("HDR To Image", device_.device, 1, &hdrSet);
+
+	hdrPipeline_.layout = hdrCreator.createPipelineLayout(device_.device, hdrPipeline_.setLayouts);
+	hdrPipeline_.pipeline = [&]() {
+		VkShaderModule vertexShader = loadShader(device_.device, "Shaders/BRDF.vert.spv");
+		VkShaderModule fragmentShader = loadShader(device_.device, "Shaders/Blit.frag.spv");
+
+		VkPipeline pipeline;
+		std::array stages = {
+			CreateInfo::ShaderStage(VK_SHADER_STAGE_VERTEX_BIT, vertexShader),
+			CreateInfo::ShaderStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader)
+		};
+		auto vertexInputState = CreateInfo::VertexInputState(nullptr, 0, nullptr, 0);
+
+		auto inputAssemblyState = CreateInfo::InputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+		auto viewportState = CreateInfo::ViewportState();
+
+		auto rasterizationState = CreateInfo::RasterizationState(
+			VK_FALSE,
+			VK_CULL_MODE_BACK_BIT,
+			VK_FRONT_FACE_COUNTER_CLOCKWISE
+		);
+
+		auto multisampleState = CreateInfo::MultisampleState();
+
+		auto depthStencilState = CreateInfo::NoDepthState();
+
+		auto colorAttachment = CreateInfo::NoBlend();
+		auto colorBlendState = CreateInfo::ColorBlendState(&colorAttachment, 1);
+
+		std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+		auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
+
+		VkFormat swapchainFormat = device_.getSurfaceFormat();
+		auto rendering = CreateInfo::Rendering(&swapchainFormat, 1, device_.getDepthFormat());
+
+		VkGraphicsPipelineCreateInfo pipelineCreateInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+		pipelineCreateInfo.stageCount = static_cast<uint32_t>(stages.size());
+		pipelineCreateInfo.pStages = stages.data();
+		pipelineCreateInfo.pVertexInputState = &vertexInputState;
+		pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
+		pipelineCreateInfo.pTessellationState = nullptr;
+		pipelineCreateInfo.pViewportState = &viewportState;
+		pipelineCreateInfo.pRasterizationState = &rasterizationState;
+		pipelineCreateInfo.pMultisampleState = &multisampleState;
+		pipelineCreateInfo.pDepthStencilState = &depthStencilState;
+		pipelineCreateInfo.pColorBlendState = &colorBlendState;
+		pipelineCreateInfo.pDynamicState = &dynamicState;
+		pipelineCreateInfo.layout = hdrPipeline_.layout;
+
+		Connect(pipelineCreateInfo, rendering);
+
+		check(vkCreateGraphicsPipelines(device_.device, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline));
+
+		vkDestroyShaderModule(device_.device, vertexShader, nullptr);
+		vkDestroyShaderModule(device_.device, fragmentShader, nullptr);
+		return pipeline;
+	}();
+
 }
 
 void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImageView depthView, const Scene::Drawbles& renderItems, const State& state)
 {
+	// HDR Pipeline
+	const VkExtent2D extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
+	if (!hdrImage_ || extent != hdrImage_->getExtent())
+	{
+		hdrBin_.push_back(std::make_pair(std::move(hdrImage_), maxFramesInFlight));
+		VkImageCreateInfo imageCI = CreateInfo::Image2DCI(extent, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+		hdrImage_ = std::make_unique<Image>(device_, imageCI);
+		hdrImage_->attachImageView(hdrImage_->getFullRange());
+		VkSamplerCreateInfo samplerCI = CreateInfo::SamplerCI(1, 
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, 
+			VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, device_.deviceProperties.limits.maxSamplerAnisotropy);
+
+		hdrImage_->attachSampler(samplerCI);
+		hdrImage_->UndefinedToColorAttachment(commandBuffer);
+
+		DescriptorWrite writer;
+		writer.add(hdrSet, 0, 0, ImageType::CombinedSampler, 1, hdrImage_->getSampler(), hdrImage_->getView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		writer.write(device_.device);
+	}
+	
 	{ // Global UBO
 		GlobalUniform uniform{};
 		uniform.projection = state.camera_->calculateProjection();
@@ -131,34 +218,13 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 		label.pLabelName = "Opaque";
 		vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
 
-		VkRenderingAttachmentInfo colorAttachment{};
-		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		colorAttachment.imageView = colorView;
-		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		colorAttachment.clearValue = { 0.f, 0.f, 0.f, 1.f };
-
-		VkRenderingAttachmentInfo depthAttachment{};
-		depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		depthAttachment.imageView = depthView;
-		depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		depthAttachment.clearValue = { 1.0f, 0 };
-
-		VkRenderingInfo renderInfo{};
-		renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		renderInfo.renderArea.offset = { 0, 0 };
-		renderInfo.renderArea.extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
-		renderInfo.layerCount = 1;
-		renderInfo.colorAttachmentCount = 1;
-		renderInfo.pColorAttachments = &colorAttachment;
-		renderInfo.pDepthAttachment = &depthAttachment;
-
-		vkCmdBeginRendering(commandBuffer, &renderInfo);
-
-		const VkExtent2D extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
+		Framebuffer framebuffer(extent);
+		framebuffer.addColorAttachment(hdrImage_->getView());
+		framebuffer.addDepthAttachment(depthView);
+		framebuffer.beginRendering(commandBuffer, {
+			{FramebufferType::Color, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, { 0.f, 0.f, 0.f, 1.f }},
+			{FramebufferType::Depth, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, { 1.0f, 0 }}
+		});
 
 		VkViewport viewport = CreateInfo::Viewport(extent);
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
@@ -182,9 +248,24 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 			vkCmdDrawIndexedIndirect(commandBuffer, *indirectBuffer, sizeof(VkDrawIndexedIndirectCommand) * group.second.offset, group.second.count, sizeof(VkDrawIndexedIndirectCommand));
 		}
 
-		vkCmdEndRendering(commandBuffer);
+		framebuffer.endRendering(commandBuffer);
 
 		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
+	}
+
+	hdrImage_->ColorAttachmentToShaderReadOptimal(commandBuffer);
+
+	{ // Draw to swapchain image
+		Framebuffer framebuffer(extent);
+		framebuffer.addColorAttachment(colorView);
+		framebuffer.beginRendering(commandBuffer, {
+			{FramebufferType::Color, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE, {}} //don't care as we are drawing over all pixels
+		});
+
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, hdrPipeline_.layout, 0, 1, &hdrSet, 0, nullptr);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, hdrPipeline_.pipeline);
+		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		framebuffer.endRendering(commandBuffer);
 	}
 
 	/* Transparent is WIP
@@ -319,13 +400,16 @@ void Renderer::draw(VkCommandBuffer commandBuffer, VkImageView colorView, VkImag
 	}
 	*/
 
-	const VkExtent2D extent = { uint32_t(state.camera_->viewportWidth), uint32_t(state.camera_->viewportHeight) };
 	// infiniteGrid_->draw(commandBuffer, globalSets_[frameCount_], colorView, depthView, extent);
 
 	skybox_->render(commandBuffer, state.camera_->calculateProjection(), state.camera_->calculateView(), colorView, depthView, extent);
 
+	hdrImage_->ShaderReadOptimalToColorAttachment(commandBuffer);
+
 	//Transition::ShaderReadOptimalToColorAttachment(accum->get(), commandBuffer);
 	//Transition::ShaderReadOptimalToColorAttachment(reveal->get(), commandBuffer);
+
+	cleanupFrameDependentItems();
 
 	frameCount_ = (frameCount_ + 1) % maxFramesInFlight;
 }
@@ -355,8 +439,21 @@ VkPipelineLayout Renderer::getPipelineLayout() const
 	return pipelineLayout_;
 }
 
+void Renderer::cleanupFrameDependentItems()
+{
+	for (auto& frame : hdrBin_)
+	{
+		frame.second -= 1;
+	}
+	std::erase_if(hdrBin_, [](const std::pair<std::unique_ptr<Image>, int>& imagePair) {
+		return imagePair.second <= 0;
+	});
+}
+
 Renderer::~Renderer()
 {
+	hdrPipeline_.clear(device_.device);
+
 	vkDestroyShaderModule(device_.device, vertexShader_, nullptr);
 	vkDestroyShaderModule(device_.device, fragmentShader_, nullptr);
 

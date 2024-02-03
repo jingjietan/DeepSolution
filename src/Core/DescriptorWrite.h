@@ -37,7 +37,11 @@ public:
 
 	VkDescriptorSetLayout createLayout(const std::string& name, VkDevice device, VkDescriptorSetLayoutCreateFlags flags = 0);
 	VkDescriptorPool createPool(const std::string& name, VkDevice device, uint32_t multiplesOf = 1u, VkDescriptorPoolCreateFlags flags = 0);
-	VkPipelineLayout createPipelineLayout(VkDevice device, const std::vector<VkDescriptorSetLayout>& layouts, VkPushConstantRange* range = nullptr);
+	VkPipelineLayout createPipelineLayout(VkDevice device, const VkDescriptorSetLayout* pLayouts, uint32_t layoutCount, VkPushConstantRange* range = nullptr);
+	VkPipelineLayout createPipelineLayout(VkDevice device, const std::ranges::range auto& layouts, VkPushConstantRange* range = nullptr)
+	{
+		return createPipelineLayout(device, layouts.data(), static_cast<uint32_t>(layouts.size()), range);
+	}
 	void allocateSets(const std::string& name, VkDevice device, uint32_t count, VkDescriptorSet* pSets);
 	void allocateVariableSets(const std::string& name, VkDevice device, uint32_t count, VkDescriptorSet* pSets, uint32_t variableCount);
 private:

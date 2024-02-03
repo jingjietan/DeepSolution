@@ -1207,7 +1207,7 @@ VkPipeline Scene::getOrCreatePipeline(const MaterialCharacteristic& character, V
 			std::array dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 			auto dynamicState = CreateInfo::DynamicState(dynamicStates.data(), dynamicStates.size());
 
-			VkFormat swapchainFormat = device_.getSurfaceFormat();
+			VkFormat swapchainFormat = VK_FORMAT_R32G32B32A32_SFLOAT; //hdr
 			auto rendering = CreateInfo::Rendering(&swapchainFormat, 1, device_.getDepthFormat());
 
 			SpecializationData data{};

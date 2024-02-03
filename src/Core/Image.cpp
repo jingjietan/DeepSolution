@@ -119,6 +119,11 @@ VkFormat Image::getFormat() const
     return format_;
 }
 
+VkExtent2D Image::getExtent() const
+{
+    return { width, height };
+}
+
 uint32_t Image::getMipLevels() const
 {
     return mipLevels;
@@ -302,7 +307,30 @@ void Image::generateMaxCubeMipmaps(VkCommandBuffer commandBuffer)
     generateCubemapMipmaps(image_, int(width), mipLevels, commandBuffer);
 }
 
-void Image::UndefinedToTransferDestination(VkCommandBuffer commandBuffer)
+void Image::UndefinedToColorAttachment(VkCommandBuffer commandBuffer) const
+{
+    VkImageMemoryBarrier2 imageBarrier{};
+    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    imageBarrier.srcAccessMask = VK_ACCESS_2_NONE;
+    imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
+    imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imageBarrier.srcQueueFamilyIndex = 0;
+    imageBarrier.dstQueueFamilyIndex = 0;
+    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imageBarrier.image = image_;
+    imageBarrier.subresourceRange = getFullRange();
+
+    VkDependencyInfo dependency{};
+    dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency.imageMemoryBarrierCount = 1;
+    dependency.pImageMemoryBarriers = &imageBarrier;
+
+    vkCmdPipelineBarrier2KHR(commandBuffer, &dependency);
+}
+
+void Image::UndefinedToTransferDestination(VkCommandBuffer commandBuffer) const
 {
     VkImageMemoryBarrier2 imageBarrier{};
     imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -360,6 +388,29 @@ void Image::ColorAttachmentToShaderReadOptimal(VkCommandBuffer commandBuffer) co
     imageBarrier.dstQueueFamilyIndex = 0;
     imageBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    imageBarrier.image = image_;
+    imageBarrier.subresourceRange = getFullRange();
+
+    VkDependencyInfo depedency{};
+    depedency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    depedency.imageMemoryBarrierCount = 1;
+    depedency.pImageMemoryBarriers = &imageBarrier;
+
+    vkCmdPipelineBarrier2KHR(commandBuffer, &depedency);
+}
+
+void Image::ShaderReadOptimalToColorAttachment(VkCommandBuffer commandBuffer) const
+{
+    VkImageMemoryBarrier2 imageBarrier{};
+    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+    imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    imageBarrier.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imageBarrier.srcQueueFamilyIndex = 0;
+    imageBarrier.dstQueueFamilyIndex = 0;
+    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    imageBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     imageBarrier.image = image_;
     imageBarrier.subresourceRange = getFullRange();
 
