@@ -1,6 +1,6 @@
 # Rendering models
 
-![Nice picture here.](repo/ABG_Screenshot.png)
+![Nice picture here.](repo/ABG_Bloom_Screenshot.png)
 
 Supports:
 - Opaque PBR Lighting

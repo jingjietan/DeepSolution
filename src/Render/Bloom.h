@@ -48,8 +48,4 @@ private:
 
 	// Index i represents image view of miplevel i.
 	std::vector<VkImageView> bloomImageViews_;
-
-	std::vector<std::pair<VkImageView, int>> bloomImageViewsRecycle_;
-
-	void cleanup();
 };

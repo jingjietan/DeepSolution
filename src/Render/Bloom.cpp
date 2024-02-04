@@ -223,7 +223,8 @@ void Bloom::doBloom(VkCommandBuffer commandBuffer, VkExtent2D extent, VkImage im
 	{
 		for (const auto& imageView : bloomImageViews_)
 		{
-			bloomImageViewsRecycle_.push_back(std::make_pair(imageView, device_.getMaxFramesInFlight()));
+			vkDestroyImageView(device_.device, imageView, nullptr);
+			// bloomImageViewsRecycle_.push_back(std::make_pair(imageView, device_.getMaxFramesInFlight()));
 		}
 
 		VkImageCreateInfo imageCI = CreateInfo::Image2DCI(bloomExtent, maxDownsamples, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
@@ -377,8 +378,6 @@ void Bloom::doBloom(VkCommandBuffer commandBuffer, VkExtent2D extent, VkImage im
 	Transition::ShaderReadOptimalToColorAttachment(image, commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 	Transition::ShaderReadOptimalToColorAttachment(bloomImage_->get(), commandBuffer, { VK_IMAGE_ASPECT_COLOR_BIT, 0, maxDownsamples, 0, 1 });
 	// all mips will be color attachment
-
-	cleanup();
 }
 
 Bloom::~Bloom()
@@ -400,19 +399,4 @@ Bloom::~Bloom()
 	vkDestroyPipelineLayout(device_.device, bloomDownsamplePipeline_.layout, nullptr);
 	vkDestroyPipelineLayout(device_.device, bloomUpsamplePipeline_.layout, nullptr);
 	vkDestroyPipelineLayout(device_.device, bloomCompositePipeline_.layout, nullptr);
-}
-
-void Bloom::cleanup()
-{
-	for (auto& p : bloomImageViewsRecycle_)
-	{
-		p.second -= 1;
-		if (p.second <= 0)
-		{
-			vkDestroyImageView(device_.device, p.first, nullptr);
-		}
-	}
-	std::erase_if(bloomImageViewsRecycle_, [](auto& p) {
-		return p.second <= 0;
-	});
 }
